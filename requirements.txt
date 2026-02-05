@@ -3,5 +3,8 @@ numpy
 matplotlib
 seaborn
 requests
-streamlit
+streamlit==1.53.1
+altair<6
 plotly
+yfinance
+reportlab

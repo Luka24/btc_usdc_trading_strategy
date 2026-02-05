@@ -123,7 +123,7 @@ class CoinGeckoFetcher:
         if cached is not None:
             return cached
         
-        # For periods > 365 days, use Yahoo Finance (no API limits)
+        # For periods > 365 days, prefer Yahoo Finance (no API limits)
         if days > 365 and YFINANCE_AVAILABLE:
             df = CoinGeckoFetcher.fetch_btc_prices_yfinance(days)
             CoinGeckoFetcher._save_to_cache(df, days)
@@ -131,15 +131,13 @@ class CoinGeckoFetcher:
         
         print(f"[CoinGecko] Fetching {days} days of BTC prices...")
         
-        # CoinGecko limit is 365 days for free API
-        if days > 365:
-            print(f"   [WARNING] CoinGecko free API limited to 365 days. Using that limit.")
-            days = 365
+        requested_days = days
+        days_param = "max" if requested_days > 365 else requested_days
         
         url = f"{CoinGeckoFetcher.BASE_URL}/coins/bitcoin/market_chart"
         params = {
             "vs_currency": vs_currency,
-            "days": days,
+            "days": days_param,
             "interval": "daily"
         }
         
@@ -157,6 +155,11 @@ class CoinGeckoFetcher:
             df['date'] = df['date'].dt.date
             
             df = df[['date', 'btc_price']].reset_index(drop=True)
+            
+            # If we fetched max history, trim to requested days
+            if requested_days > 0 and len(df) > requested_days:
+                df = df.tail(requested_days).reset_index(drop=True)
+                print(f"   [INFO] Trimmed to last {requested_days} days")
             
             print(f"   [OK] Fetched {len(df)} days of data")
             print(f"   - From: {df['date'].iloc[0]}")
@@ -420,13 +423,15 @@ class DataFetcher:
     
     @staticmethod
     def fetch_combined_data(days: int = 365, 
-                           use_real_data: bool = True) -> pd.DataFrame:
+                           use_real_data: bool = True,
+                           force_refresh: bool = False) -> pd.DataFrame:
         """
         Fetch combined data (prices + hashrate) with caching support.
         
         Args:
             days (int): Number of days
             use_real_data (bool): Whether to use real API data
+            force_refresh (bool): If True, bypass cache and fetch fresh data
             
         Returns:
             pd.DataFrame: Combined data
@@ -442,12 +447,15 @@ class DataFetcher:
         
         print("\n[MODE] Real historical data\n")
         
-        # Check cache first
-        cached_data = DataFetcher._load_from_cache(days)
-        if cached_data is not None:
-            print(f"   [OK] {len(cached_data)} days of combined data (from cache)")
-            print(f"   - Dates: {cached_data['date'].iloc[0]} to {cached_data['date'].iloc[-1]}")
-            return cached_data
+        # Check cache first (unless force refresh)
+        if not force_refresh:
+            cached_data = DataFetcher._load_from_cache(days)
+            if cached_data is not None:
+                print(f"   [OK] {len(cached_data)} days of combined data (from cache)")
+                print(f"   - Dates: {cached_data['date'].iloc[0]} to {cached_data['date'].iloc[-1]}")
+                return cached_data
+        else:
+            print("   [REFRESH] Bypassing cache, fetching fresh data...")
         
         # Fetch BTC prices
         df_prices = CoinGeckoFetcher.fetch_btc_prices(days)
@@ -462,7 +470,18 @@ class DataFetcher:
         df_prices['date'] = pd.to_datetime(df_prices['date'])
         df_hashrate['date'] = pd.to_datetime(df_hashrate['date'])
         
-        df_combined = pd.merge(df_prices, df_hashrate, on='date', how='inner')
+        # Use left merge to keep all price dates
+        df_combined = pd.merge(df_prices, df_hashrate, on='date', how='left')
+        
+        # Interpolate hashrate values for missing dates (linear interpolation)
+        df_combined['hashrate_eh_per_s'] = df_combined['hashrate_eh_per_s'].interpolate(method='linear')
+        
+        # If first/last values are still NaN, forward/backfill (pandas 2.0+ syntax)
+        df_combined['hashrate_eh_per_s'] = df_combined['hashrate_eh_per_s'].ffill()
+        df_combined['hashrate_eh_per_s'] = df_combined['hashrate_eh_per_s'].bfill()
+        
+        # Drop any remaining rows with NaN (shouldn't happen, but just in case)
+        df_combined = df_combined.dropna()
         
         # Format as required by backtest engine
         df_combined['date'] = df_combined['date'].dt.strftime('%Y-%m-%d')
@@ -470,6 +489,7 @@ class DataFetcher:
         
         print(f"   [OK] {len(df_combined)} days of combined data")
         print(f"   - Dates: {df_combined['date'].iloc[0]} to {df_combined['date'].iloc[-1]}")
+        print(f"   [INFO] Hashrate values interpolated linearly for missing dates")
         
         # Save to cache
         DataFetcher._save_to_cache(df_combined, days)
