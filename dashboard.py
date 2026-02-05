@@ -128,9 +128,15 @@ def _do_fetch_and_backtest(start_date_str, end_date_str, force_refresh=False, us
         start_dt = datetime.strptime(start_date_str, '%Y-%m-%d')
         end_dt = datetime.strptime(end_date_str, '%Y-%m-%d')
         required_days = (end_dt - start_dt).days + 1
-        
+
         # Fetch data for the required period (add buffer for API limits)
-        fetch_days = max(required_days + 30, 90)  # At least 90 days
+        # If the end date is in the past, expand lookback to cover the historical window
+        today = datetime.now().date()
+        if end_dt.date() < today:
+            lookback_days = (today - start_dt.date()).days + 1
+            fetch_days = max(lookback_days, required_days + 30, 90)
+        else:
+            fetch_days = max(required_days + 30, 90)  # At least 90 days
         
         data = DataFetcher.fetch_combined_data(
             days=fetch_days,
