@@ -578,34 +578,6 @@ The core principle: Bitcoin price tends to revert to its production cost over ti
 
 st.markdown("---")
 
-# Historical Parameters (Electricity & Efficiency)
-st.markdown("#### Electricity Prices & Miner Efficiency")
-col1, col2 = st.columns(2)
-
-# Electricity prices table
-electricity_data = {
-    'Year': [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026],
-    'Price ($/kWh)': [0.10, 0.10, 0.08, 0.07, 0.065, 0.065, 0.07, 0.065, 0.062, 0.06, 0.06],
-}
-
-efficiency_data = {
-    'Year': [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026],
-    'Efficiency (J/TH)': [250, 150, 110, 85, 60, 50, 45, 38, 30, 24, 22],
-}
-
-with col1:
-    st.subheader("Electricity Prices")
-    df_electricity = pd.DataFrame(electricity_data)
-    st.dataframe(df_electricity, use_container_width=True, hide_index=True)
-    st.caption("Network average electricity costs for miners")
-
-with col2:
-    st.subheader("Network Efficiency")
-    df_efficiency = pd.DataFrame(efficiency_data)
-    st.dataframe(df_efficiency, use_container_width=True, hide_index=True)
-    st.caption("Network average miner efficiency (all miners, not just newest)")
-
-st.markdown("---")
 
 # 1. BTC Price vs Production Cost (glavni graf)
 st.markdown("""

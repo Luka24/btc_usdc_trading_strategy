@@ -256,17 +256,38 @@ and why I made certain choices when building this system.
     ---
     
     ### Electricity Prices Over Time
+
     
-    **Historical prices I used ($/kWh):**
+    **Interactive Tables:**
+    """)
     
-    | Year | Price | Why |
-    |------|-------|-----|
-    | 2016 | $0.100 | Early days, not very efficient |
-    | 2017 | $0.100 | Fast growth, many inefficient miners |
-    | 2018-2019 | $0.080–$0.070 | Industry got better, good contracts |
-    | 2020-2021 | $0.065 | Mature industry, better deals |
-    | 2022 | $0.070 | Energy prices went up |
-    | 2023-2024 | $0.062–$0.060 | Prices went back down, efficient mining |
+    import pandas as pd
+    
+    col1, col2 = st.columns(2)
+    
+    electricity_data = {
+        'Year': [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026],
+        'Price ($/kWh)': [0.10, 0.10, 0.08, 0.07, 0.065, 0.065, 0.07, 0.065, 0.062, 0.06, 0.06],
+    }
+    
+    efficiency_data = {
+        'Year': [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026],
+        'Efficiency (J/TH)': [250, 150, 110, 85, 60, 50, 45, 38, 30, 24, 22],
+    }
+    
+    with col1:
+        st.subheader("Electricity Prices")
+        df_electricity = pd.DataFrame(electricity_data)
+        st.dataframe(df_electricity, use_container_width=True, hide_index=True)
+        st.caption("Network average electricity costs for miners")
+    
+    with col2:
+        st.subheader("Network Efficiency")
+        df_efficiency = pd.DataFrame(efficiency_data)
+        st.dataframe(df_efficiency, use_container_width=True, hide_index=True)
+        st.caption("Network average miner efficiency (all miners, not just newest)")
+    
+    st.markdown("""
     
     **Where I got this data:**
     - **US EIA:** https://www.eia.gov/ (US industrial electricity prices)
