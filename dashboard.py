@@ -2,6 +2,7 @@
 BTC Trading Strategy Dashboard - AUTO-UPDATING
 ================================================
 Automatically updates data via API and displays charts.
+Last updated: Feb 13, 2026
 """
 
 import streamlit as st
