@@ -475,7 +475,7 @@ and why I made certain choices when building this system.
     
     **Why -30%?** Professional traders use 20-40% for crypto. I tested and -30% works best - stops big losses without panic selling.
     
-    **Source:** Binance Academy - Risk Management (https://academy.binance.com/en/articles/risk-management-strategies-in-cryptocurrency)
+    **Source:** Binance Academy - Risk Management (https://academy.binance.com/en/articles)
     
     ---
     
@@ -511,7 +511,7 @@ and why I made certain choices when building this system.
     
     **Why -10%?** Industry standard for trending assets. Protects most profit without exiting from normal pullbacks.
     
-    **Source:** Schwab Trailing Stop Guide (https://www.schwab.com/learn/story/trading-up-close-trailing-stop-loss-orders)
+    **Source:** Schwab Trailing Stop Guide (https://www.schwab.com/learn)
     
     ---
     
