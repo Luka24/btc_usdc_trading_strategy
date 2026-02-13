@@ -104,17 +104,17 @@ and why I made certain choices when building this system.
     I read many sources before building this. Here are the main ones:
     
     **1. Charles Edwards - Capriole Investments: "Bitcoin Energy Value"**
-    - **Link:** https://www.capriole.io/insights/bitcoin-mining-cost-analysis
+    - **Link:** https://capriole.io/
     - **What I learned:** Production cost works like a floor when prices are falling and a ceiling when prices get too high
     - **How I used it:** This helped me decide the buy and sell thresholds
     
     **2. JPMorgan Bitcoin Mining Analysis (2021-2024)**
-    - **Link:** https://www.jpmorgan.com/insights/research/bitcoin
+    - **Link:** https://www.jpmorgan.com/insights/research
     - **What I learned:** Mining costs and Bitcoin price are strongly connected
     - **How I used it:** This made me more confident that production cost is a good reference point
     
     **3. CESifo Working Paper: "The Economics of Bitcoin Mining"**
-    - **Link:** https://www.cesifo.org/en/publikationen/2023/working-paper/economics-bitcoin-mining
+    - **Link:** https://www.cesifo.org/DocDL/cesifo1_wp10145.pdf
     - **What I learned:** Academic research shows mining costs create natural price limits
     - **How I used it:** Gave me the economic reason for using mean reversion
     
@@ -123,7 +123,7 @@ and why I made certain choices when building this system.
     - **What I used:** Their data on how much electricity Bitcoin mining uses
     
     **5. Visual Capitalist Mining Cost Research**
-    - **Link:** https://www.visualcapitalist.com/bitcoin-mining-costs/
+    - **Link:** https://www.visualcapitalist.com/
     - **What I used:** Historical electricity prices and how efficient miners were over time
     
     ---
@@ -628,15 +628,15 @@ and why I made certain choices when building this system.
     ### Key Research Sources
     
     **Strategy & Mining Cost:**
-    1. Capriole Investments - Bitcoin Energy Value: https://www.capriole.io/insights/bitcoin-mining-cost-analysis
-    2. JPMorgan Bitcoin Research: https://www.jpmorgan.com/insights/research/bitcoin
+    1. Capriole Investments - Bitcoin Energy Value: https://capriole.io/
+    2. JPMorgan Bitcoin Research: https://www.jpmorgan.com/insights/research
     3. Cambridge CCAF - Bitcoin Electricity: https://ccaf.io/cbnsi/cbeci
     
     **Risk Management:**
-    4. Binance Academy - Risk Management: https://academy.binance.com/en/articles/risk-management-strategies-in-cryptocurrency
+    4. Binance Academy - Risk Management: https://academy.binance.com/
     5. Investopedia - Stop-Loss: https://www.investopedia.com/terms/s/stop-lossorder.asp
     6. Investopedia - Risk/Reward: https://www.investopedia.com/terms/r/riskrewardratio.asp
-    7. Schwab - Trailing Stops: https://www.schwab.com/learn/story/trading-up-close-trailing-stop-loss-orders
+    7. Schwab - Trailing Stops: https://www.schwab.com/
     
     **Data Sources:**
     8. CoinGecko API: https://www.coingecko.com/en/api/documentation
