@@ -1,7 +1,13 @@
-[client]
+[theme]
+base = "light"
 primaryColor = "#4f6f52"
+backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f4f6f2"
 textColor = "#3b4637"
+
+[server]
+headless = true
+enableCORS = false
 
 [logger]
 level = "info"

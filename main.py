@@ -12,158 +12,187 @@ from config import (
     RiskManagementConfig, BacktestConfig
 )
 from production_cost import BTCProductionCostCalculator, ProductionCostSeries
-from backtest import BacktestEngine, Signal, create_synthetic_data
-from portfolio import PortfolioManager
-from risk_manager import RiskManager
+from strategy import TradingStrategy
 from data_fetcher import DataFetcher
 
 
-def gen_report(engine, rm):
-    m = engine.calculate_metrics()
-    pdf = engine.portfolio_manager.get_portfolio_dataframe()
-    
-    r = f"""
-BTC/USDC TRADING STRATEGY REPORT
-{'-'*70}
 
-Period: {pdf.index[0].strftime('%Y-%m-%d')} to {pdf.index[-1].strftime('%Y-%m-%d')}
-Days: {len(pdf)} ({len(pdf)/365:.1f} years)
-
-Capital: ${pdf['total_value'].iloc[0]:,.0f} -> ${pdf['total_value'].iloc[-1]:,.0f}
-Return: {m['total_return_pct']:.2f}%
-Sharpe: {m['sharpe_ratio']:.3f}
-Max DD: {m['max_drawdown_pct']:.2f}%
-Win rate: {m['win_rate_pct']:.1f}%
-
-BUY: {m['buy_signals']} | SELL: {m['sell_signals']} | HOLD: {m['hold_signals']}
-Trades: {m['num_trades']}
-
-BTC weight: {pdf['btc_weight'].mean():.1%} (min: {pdf['btc_weight'].min():.1%}, max: {pdf['btc_weight'].max():.1%})
-
-Risk controls: Drawdown (-20%), Volatility (80%), VaR (-4%), Liquidity (>$300M)
-
-Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-{'-'*70}
-"""
-    return r
-
-
-def plot_analysis(engine):
-    rdf = engine.backtest_data
-    pdf = engine.portfolio_manager.get_portfolio_dataframe()
-
-    comp_path = 'results/mining_cost_comparison.csv'
-    mcdf = None
-    if os.path.exists(comp_path):
-        try:
-            mcdf = pd.read_csv(comp_path)
-            mcdf['date'] = pd.to_datetime(mcdf['date'])
-            if mcdf.empty or 'model_cost_usd' not in mcdf.columns:
-                mcdf = None
-        except Exception:
-            mcdf = None
-    
-    fig = plt.figure(figsize=(16, 12))
-    gs = fig.add_gridspec(3, 2, hspace=0.3, wspace=0.3)
-    
-    ax1 = fig.add_subplot(gs[0, :])
-    ax1.plot(rdf['date'], rdf['btc_price'], 'b-', linewidth=2, label='BTC Price')
-    ax1.plot(rdf['date'], rdf['production_cost'], color='gray', linewidth=1, alpha=0.7, label='Cost')
-    ax1.plot(rdf['date'], rdf['production_cost_smoothed'], 'r--', linewidth=2, label='Cost (EMA)')
-    
-    if mcdf is not None:
-        ax1.plot(mcdf['date'], mcdf['model_cost_usd'], color='purple', linewidth=2, linestyle=':', alpha=0.8)
-        ax1.plot(mcdf['date'], mcdf['real_cost_usd'], color='green', linewidth=2, linestyle='-.')
-    
-    ax1.fill_between(rdf['date'], 
-                      rdf['production_cost_smoothed'] * 0.9,
-                      rdf['production_cost_smoothed'] * 1.1,
-                      alpha=0.1, color='orange')
-    ax1.set_ylabel('USD')
-    ax1.set_title('Price vs Cost', fontweight='bold')
-    ax1.grid(True, alpha=0.3)
-    
-    ax2 = fig.add_subplot(gs[1, 0])
-    col = {'BUY': 'g', 'SELL': 'r', 'HOLD': 'gray'}
-    for sig in ['BUY', 'SELL', 'HOLD']:
-        mask = rdf['signal'] == sig
-        ax2.scatter(rdf[mask]['date'], rdf[mask]['signal_ratio'], c=col[sig], label=sig, alpha=0.6, s=20)
-    ax2.axhline(y=0.90, color='g', linestyle='--', alpha=0.5)
-    ax2.axhline(y=1.10, color='r', linestyle='--', alpha=0.5)
-    ax2.set_title('Signals')
-    ax2.grid(True, alpha=0.3)
-    
-    ax3 = fig.add_subplot(gs[1, 1])
-    ax3.plot(pdf.index, pdf['total_value'], 'darkgreen', linewidth=2.5)
-    ax3.fill_between(pdf.index, pdf['total_value'].iloc[0], pdf['total_value'], alpha=0.3, color='darkgreen')
-    ax3.set_title('Portfolio Value')
-    ax3.grid(True, alpha=0.3)
-    
-    ax4 = fig.add_subplot(gs[2, 0])
-    ax4.fill_between(pdf.index, 0, pdf['btc_weight'], label='BTC', alpha=0.7, color='orange')
-    ax4.fill_between(pdf.index, pdf['btc_weight'], 1, label='USDC', alpha=0.7, color='blue')
-    ax4.set_title('Allocation')
-    ax4.set_ylim([0, 1])
-    ax4.legend()
-    ax4.grid(True, alpha=0.3)
-    
-    ax5 = fig.add_subplot(gs[2, 1])
-    ret = pdf['total_value'].pct_change() * 100
-    ax5.hist(ret.dropna(), bins=50, color='skyblue', edgecolor='black', alpha=0.7)
-    ax5.axvline(x=ret.mean(), color='red', linestyle='--', linewidth=2)
-    ax5.set_title('Returns Distribution')
-    ax5.grid(True, alpha=0.3, axis='y')
-    
-    os.makedirs('results', exist_ok=True)
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    fn = f'results/strategy_analysis_{ts}.png'
-    plt.savefig(fn, dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    
-    return fig
 
 
 def main():
-    print("\nBTC/USDC Trading Strategy")
-    print("-" * 40)
+    print("\n" + "="*70)
+    print("BTC/USDC ADAPTIVE ALLOCATION STRATEGY - PROFESSIONAL EDITION")
+    print("="*70)
     
     print("\n[1] Fetching data...")
     data = DataFetcher.fetch_combined_data(
         days=BacktestConfig.DAYS_TO_FETCH, 
         use_real_data=BacktestConfig.USE_REAL_DATA
     )
-    print(f"    {len(data)} days loaded")
+    print(f"    ✓ {len(data)} days loaded")
     
-    print("\n[2] Running backtest...")
-    engine = BacktestEngine(initial_capital=100_000)
-    engine.add_from_dataframe(data)
-    pdf = engine.run_backtest(initial_btc_quantity=2.0)
-    print(f"    Backtest complete")
+    print("\n[2] Initializing strategy...")
+    strategy = TradingStrategy(initial_capital=100_000)
+    print(f"    ✓ Strategy initialized (Professional rules v3.0)")
+    print(f"      - Signal smoothing: Trend(SMA3), Momentum(EMA0.4), Cost(SMA7)")
+    print(f"      - Multi-layer confirmation: Zone/Magnitude/Directional/Extreme")
+    print(f"      - Staged execution: 2-day split (60/40)")
     
-    print("\n[3] Calculating metrics...")
-    m = engine.calculate_metrics()
-    print(f"    Return: {m['total_return_pct']:.2f}% | Sharpe: {m['sharpe_ratio']:.3f} | DD: {m['max_drawdown_pct']:.2f}%")
+    print("\n[3] Running daily trading cycles...")
     
-    print("\n[4] Risk evaluation...")
-    rm = RiskManager()
-    rets = pdf['total_value'].pct_change().dropna()
-    for r in rets.tail(30):
-        rm.update_returns(r)
-    print(f"    Vol: {rm.get_volatility():.2%} | VaR: {rm.calculate_var():.2%}")
+    # Prepare price histories
+    prices = data['btc_price'].values
+    costs = data['production_cost'].values
     
-    print("\n[5] Generating report...")
-    report = gen_report(engine, rm)
-    print(report)
+    cycle_count = 0
+    for idx in range(200, len(data)):  # Need 200 days for SMA
+        date = data.iloc[idx]['date']
+        btc_price = data.iloc[idx]['btc_price']
+        production_cost = data.iloc[idx]['production_cost']
+        
+        # Get recent data for calculations
+        prices_200 = prices[:idx+1]
+        prices_90 = prices[max(0, idx-90):idx+1]
+        returns_30 = np.diff(prices[max(0, idx-30):idx+1]) / prices[max(0, idx-30):idx]
+        
+        # Run strategy cycle
+        result = strategy.run_daily_cycle(
+            date=date,
+            btc_price=btc_price,
+            production_cost=production_cost,
+            prices_last_200=prices_200,
+            prices_last_90=prices_90,
+            daily_returns_30=returns_30
+        )
+        
+        cycle_count += 1
+        if cycle_count % 500 == 0:
+            print(f"    ✓ Processed {cycle_count} cycles... (Current: {date})")
+    
+    print(f"    ✓ Total cycles: {cycle_count}")
+    
+    print("\n[4] Generating summary report...")
+    summary = strategy.get_summary()
+    print(summary)
+    
+    print("\n[5] Exporting execution log...")
+    log_df = strategy.get_execution_log_df()
     os.makedirs('results', exist_ok=True)
-    fn = f"results/strategy_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-    with open(fn, 'w', encoding='utf-8') as f:
-        f.write(report)
     
-    print("\n[6] Generating graphs...")
-    plot_analysis(engine)
-    print("\n[7] Exporting results...")
-    engine.export_results()
-    print("\nDone! Check results/ folder for outputs.\n")
+    # Save execution log
+    log_filename = f"results/strategy_execution_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    log_df.to_csv(log_filename, index=False)
+    print(f"    ✓ Saved: {log_filename}")
+    
+    # Save summary
+    summary_filename = f"results/strategy_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(summary_filename, 'w', encoding='utf-8') as f:
+        f.write(summary)
+    print(f"    ✓ Saved: {summary_filename}")
+    
+    print("\n[6] Generating analysis plots...")
+    _plot_strategy_analysis(log_df, data)
+    
+    print("\n" + "="*70)
+    print("COMPLETED SUCCESSFULLY")
+    print("="*70)
+    print(f"\nCheck results/ folder for outputs:")
+    print(f"  - Execution log CSV")
+    print(f"  - Summary report TXT")
+    print(f"  - Analysis plots PNG")
+    print("\n")
+
+
+def _plot_strategy_analysis(log_df: pd.DataFrame, data_df: pd.DataFrame):
+    """Generate analysis plots."""
+    fig = plt.figure(figsize=(18, 12))
+    gs = fig.add_gridspec(3, 2, hspace=0.35, wspace=0.3)
+    
+    # ===== Plot 1: Price vs Targets =====
+    ax1 = fig.add_subplot(gs[0, :])
+    ax1.plot(log_df['date'], log_df['btc_price'], 'b-', linewidth=2, label='BTC Price', alpha=0.8)
+    ax1.plot(log_df['date'], log_df['production_cost'], color='gray', linewidth=1, alpha=0.5, label='Production Cost')
+    
+    # Color code by target allocation
+    colors_map = {1.0: 'darkgreen', 0.7: 'green', 0.4: 'yellow', 0.2: 'orange', 0.0: 'red'}
+    for target, color in colors_map.items():
+        mask = log_df['target_btc'] == target
+        ax1.scatter(log_df[mask]['date'], log_df[mask]['btc_price'], 
+                   c=color, s=20, alpha=0.6, label=f'Target {target:.0%}')
+    
+    ax1.set_ylabel('USD', fontweight='bold')
+    ax1.set_title('BTC Price vs Production Cost & Target Allocation', fontweight='bold', fontsize=12)
+    ax1.legend(loc='upper left', fontsize=8)
+    ax1.grid(True, alpha=0.3)
+    
+    # ===== Plot 2: Ensemble Score Evolution =====
+    ax2 = fig.add_subplot(gs[1, 0])
+    ax2.plot(log_df['date'], log_df['score_raw'], 'gray', alpha=0.3, linewidth=1, label='Raw')
+    ax2.plot(log_df['date'], log_df['score_smooth'], 'orange', alpha=0.6, linewidth=1.5, label='Smooth')
+    ax2.plot(log_df['date'], log_df['score_adjusted'], 'darkblue', linewidth=2, label='Adjusted')
+    ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
+    ax2.axhline(y=2.0, color='green', linestyle='--', alpha=0.3)
+    ax2.axhline(y=-2.0, color='red', linestyle='--', alpha=0.3)
+    ax2.fill_between(log_df['date'], -2.0, 2.0, alpha=0.05, color='gray')
+    ax2.set_ylabel('Score', fontweight='bold')
+    ax2.set_title('Ensemble Score Evolution', fontweight='bold')
+    ax2.legend(loc='best', fontsize=8)
+    ax2.grid(True, alpha=0.3)
+    
+    # ===== Plot 3: Position Evolution =====
+    ax3 = fig.add_subplot(gs[1, 1])
+    ax3.fill_between(log_df['date'], 0, log_df['current_position_btc'], 
+                    label='BTC %', alpha=0.7, color='orange')
+    ax3.fill_between(log_df['date'], log_df['current_position_btc'], 1, 
+                    label='USDC %', alpha=0.7, color='steelblue')
+    ax3.plot(log_df['date'], log_df['target_btc'], 'darkred', linewidth=1.5, 
+            linestyle='--', label='Target', alpha=0.8)
+    ax3.set_ylabel('Allocation', fontweight='bold')
+    ax3.set_title('Position Evolution', fontweight='bold')
+    ax3.set_ylim([0, 1])
+    ax3.legend(loc='best', fontsize=8)
+    ax3.grid(True, alpha=0.3)
+    
+    # ===== Plot 4: Volatility Regime =====
+    ax4 = fig.add_subplot(gs[2, 0])
+    colors = {'LOW': 'green', 'NORMAL': 'blue', 'HIGH': 'red'}
+    for regime in ['LOW', 'NORMAL', 'HIGH']:
+        mask = log_df['vol_regime'] == regime
+        ax4.scatter(log_df[mask]['date'], log_df[mask]['annual_vol'], 
+                   c=colors[regime], label=regime, alpha=0.6, s=20)
+    ax4.axhline(y=0.50, color='green', linestyle='--', alpha=0.3)
+    ax4.axhline(y=0.80, color='red', linestyle='--', alpha=0.3)
+    ax4.set_ylabel('Annual Vol', fontweight='bold')
+    ax4.set_title('Volatility Regime', fontweight='bold')
+    ax4.legend(loc='best', fontsize=8)
+    ax4.grid(True, alpha=0.3)
+    
+    # ===== Plot 5: Confirmation Success Rate =====
+    ax5 = fig.add_subplot(gs[2, 1])
+    confirmed_sum = log_df['confirmed'].sum()
+    total = len(log_df)
+    not_confirmed = total - confirmed_sum
+    
+    ax5.bar(['Confirmed', 'Not Confirmed'], [confirmed_sum, not_confirmed], 
+           color=['green', 'red'], alpha=0.7, edgecolor='black')
+    ax5.set_ylabel('Count', fontweight='bold')
+    ax5.set_title(f'Confirmation Results (Total: {total})', fontweight='bold')
+    
+    # Add percentage labels
+    for i, v in enumerate([confirmed_sum, not_confirmed]):
+        pct = (v / total) * 100
+        ax5.text(i, v + 10, f'{v}\n({pct:.1f}%)', ha='center', fontweight='bold')
+    
+    ax5.grid(True, alpha=0.3, axis='y')
+    
+    # Save figure
+    os.makedirs('results', exist_ok=True)
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    fn = f'results/strategy_analysis_{ts}.png'
+    plt.savefig(fn, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    
+    print(f"    ✓ Saved: {fn}")
 
 
 if __name__ == "__main__":

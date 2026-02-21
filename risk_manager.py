@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from enum import Enum
+from config import RiskManagementConfig
 
 
 class RiskMode(Enum):
@@ -25,6 +26,18 @@ class RiskManager:
         self.current_mode = RiskMode.NORMAL
         self.mode_history = []
         self.risk_log = []
+        
+        # ========== PROTECTION TRACKING ==========
+        # Protection 2: Stop-Loss tracking
+        self.entry_price = None
+        self.entry_date = None
+        
+        # Protection 4: Trailing Stop tracking
+        self.peak_price_for_trailing_stop = None
+        
+        # Protection 6: Consecutive Loss tracking
+        self.consecutive_loss_count = 0
+        self.last_daily_return = 0.0
     
     def update_peak(self, val, date):
         if val > self.peak_value:

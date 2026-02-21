@@ -483,9 +483,24 @@ class DataFetcher:
         # Drop any remaining rows with NaN (shouldn't happen, but just in case)
         df_combined = df_combined.dropna()
         
+        # Calculate production cost
+        print("\n[PRODUCTION COST] Calculating...")
+        from production_cost import BTCProductionCostCalculator
+        
+        cost_calc = BTCProductionCostCalculator()
+        
+        production_costs = []
+        for idx, row in df_combined.iterrows():
+            cost = cost_calc.calculate_total_cost_per_btc(
+                hashrate_eh_per_s=row['hashrate_eh_per_s']
+            )
+            production_costs.append(cost)
+        
+        df_combined['production_cost'] = production_costs
+        
         # Format as required by backtest engine
         df_combined['date'] = df_combined['date'].dt.strftime('%Y-%m-%d')
-        df_combined = df_combined[['date', 'btc_price', 'hashrate_eh_per_s']]
+        df_combined = df_combined[['date', 'btc_price', 'hashrate_eh_per_s', 'production_cost']]
         
         print(f"   [OK] {len(df_combined)} days of combined data")
         print(f"   - Dates: {df_combined['date'].iloc[0]} to {df_combined['date'].iloc[-1]}")
@@ -519,10 +534,22 @@ class DataFetcher:
         hashrates = base_hashrate + hashrate_cycle + hashrate_trend + hashrate_noise
         hashrates = np.maximum(hashrates, 100)
         
+        # Production cost (synthetic)
+        from production_cost import BTCProductionCostCalculator
+        cost_calc = BTCProductionCostCalculator()
+        
+        production_costs = []
+        for i, hashrate in enumerate(hashrates):
+            cost = cost_calc.calculate_total_cost_per_btc(
+                hashrate_eh_per_s=hashrate
+            )
+            production_costs.append(cost)
+        
         df = pd.DataFrame({
             'date': [d.strftime('%Y-%m-%d') for d in dates],
             'btc_price': btc_prices,
             'hashrate_eh_per_s': hashrates,
+            'production_cost': production_costs,
         })
         
         print(f"   [OK] Generated {len(df)} days of synthetic data")

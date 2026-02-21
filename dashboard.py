@@ -29,7 +29,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import modules
 from data_fetcher import DataFetcher
-from backtest import BacktestEngine
+from strategy import TradingStrategy
+from signal_calculator import SignalCalculator
+from confirmation_layer import ConfirmationLayer
 from risk_manager import RiskManager
 from config import BacktestConfig
 
@@ -145,81 +147,167 @@ def _do_fetch_and_backtest(start_date_str, end_date_str, force_refresh=False, us
             force_refresh=force_refresh
         )
         
-        # Run backtest
-        engine = BacktestEngine(initial_capital=100_000, enable_risk_management=use_risk_management)
-        engine.add_from_dataframe(data)
-        portfolio_df = engine.run_backtest(initial_btc_quantity=2.0)
+        # Run strategy (nova verzija)
+        strategy = TradingStrategy(initial_capital=100_000)
+        prices = np.array(data['btc_price'].values, dtype=float)
         
-        # Calculate metrics
-        metrics = engine.calculate_metrics()
+        for idx in range(200, len(data)):
+            row = data.iloc[idx]
+            returns_30 = np.diff(prices[max(0, idx-30):idx+1]) / prices[max(0, idx-30):idx]
+            
+            strategy.run_daily_cycle(
+                date=row['date'],
+                btc_price=row['btc_price'],
+                production_cost=row['production_cost'],
+                prices_last_200=prices[:idx+1],
+                prices_last_90=prices[max(0, idx-90):idx+1],
+                daily_returns_30=returns_30
+            )
+        
+        # Get execution log (simulacija portfolio_df)
+        log_df = strategy.get_execution_log_df()
+        
+        # Add 'signal' column for dashboard compatibility (map from confirmation_reason)
+        def map_signal(row):
+            if not row['confirmed']:
+                return 'HOLD'
+            reason = str(row['confirmation_reason']).upper()
+            if 'BUY' in reason or row['target_btc'] > row['current_position_btc']:
+                return 'BUY'
+            elif 'SELL' in reason or row['target_btc'] < row['current_position_btc']:
+                return 'SELL'
+            else:
+                return 'HOLD'
+        
+        log_df['signal'] = log_df.apply(map_signal, axis=1)
+        log_df['signal_ratio'] = log_df['cost_ratio']  # Use cost_ratio as signal_ratio
+        log_df['production_cost_smoothed'] = log_df['production_cost']
+        
+        # Build portfolio_df iz execution log
+        # NOTE: current_position_btc/usdc are WEIGHTS (0-1), not quantities!
+        portfolio_df = pd.DataFrame()
+        portfolio_df['date'] = pd.to_datetime(log_df['date'])
+        portfolio_df.set_index('date', inplace=True)
+        portfolio_df['btc_price'] = log_df['btc_price'].values
+        portfolio_df['btc_weight'] = log_df['current_position_btc'].values  # Target weight
+        portfolio_df['usdc_weight'] = log_df['current_position_usdc'].values
+        
+        # Calculate actual portfolio value with PROPER ACCOUNTING
+        # Track actual BTC quantity and USDC balance through time
+        initial_capital = strategy.initial_capital
+        initial_btc_weight = log_df['current_position_btc'].iloc[0]
+        initial_usdc_weight = log_df['current_position_usdc'].iloc[0]
+        initial_btc_price = portfolio_df['btc_price'].iloc[0]
+        
+        # Initialize positions
+        btc_quantity = (initial_capital * initial_btc_weight) / initial_btc_price
+        usdc_balance = initial_capital * initial_usdc_weight
+        
+        quantities_btc = []
+        balances_usdc = []
+        total_values = []
+        
+        prev_weight = initial_btc_weight
+        
+        for idx in range(len(portfolio_df)):
+            current_price = portfolio_df['btc_price'].iloc[idx]
+            target_weight = portfolio_df['btc_weight'].iloc[idx]
+            
+            # Calculate current value BEFORE any rebalancing
+            btc_value = btc_quantity * current_price
+            current_total = btc_value + usdc_balance
+            
+            # Check if we need to rebalance (weight changed)
+            if abs(target_weight - prev_weight) > 0.001:  # Weight changed
+                # Rebalance to target weight
+                target_btc_value = current_total * target_weight
+                target_usdc_value = current_total * (1 - target_weight)
+                
+                # Execute trade
+                btc_quantity = target_btc_value / current_price
+                usdc_balance = target_usdc_value
+                
+                prev_weight = target_weight
+            
+            # Store current state AFTER rebalancing
+            quantities_btc.append(btc_quantity)
+            balances_usdc.append(usdc_balance)
+            total_values.append(btc_quantity * current_price + usdc_balance)
+        
+        portfolio_df['btc_quantity'] = quantities_btc
+        portfolio_df['usdc_value'] = balances_usdc
+        portfolio_df['total_value'] = total_values
+        portfolio_df['btc_value'] = portfolio_df['btc_quantity'] * portfolio_df['btc_price']
+        
+        # Recalculate actual weights based on real positions
+        portfolio_df['btc_weight'] = portfolio_df['btc_value'] / portfolio_df['total_value']
+        portfolio_df['btc_weight'] = portfolio_df['btc_weight'].fillna(0)
+        
+        # Diagnostics - print to console for debugging
+        print(f"\n[PORTFOLIO DEBUG]")
+        print(f"  Initial capital: ${initial_capital:,.0f}")
+        print(f"  Initial BTC weight: {initial_btc_weight*100:.1f}%")
+        print(f"  Initial BTC price: ${initial_btc_price:,.2f}")
+        print(f"  Initial BTC quantity: {btc_quantity:.6f} BTC")
+        print(f"  Weight changes detected: {(portfolio_df['btc_weight'].diff().abs() > 0.001).sum()}")
+        print(f"  Final portfolio value: ${portfolio_df['total_value'].iloc[-1]:,.2f}")
+        print(f"  Final BTC quantity: {portfolio_df['btc_quantity'].iloc[-1]:.6f} BTC")
+        
+        # Metrics
+        metrics = {
+            'total_return_pct': 0,
+            'sharpe_ratio': 0,
+            'max_drawdown_pct': 0,
+            'buy_signals': 0,
+            'sell_signals': 0,
+            'win_rate_pct': 0,
+        }
         
         # Risk manager
         rm = RiskManager()
-        daily_returns = portfolio_df['total_value'].pct_change().dropna()
-        for ret in daily_returns.tail(30):
-            rm.update_returns(ret)
         
-        return engine, portfolio_df, metrics, rm
+        return strategy, log_df, portfolio_df, metrics, rm
 
 
-def calculate_display_metrics(engine, portfolio_df, metrics, rm):
+def calculate_display_metrics(strategy, log_df, portfolio_df, metrics, rm):
     """Calculate metrics for display."""
-    results_df = engine.backtest_data
     
     return {
-        'total_return': metrics['total_return_pct'],
-        'sharpe_ratio': metrics['sharpe_ratio'],
-        'max_drawdown': metrics['max_drawdown_pct'],
-        'volatility': rm.calculate_volatility() * 100,
-        'var_99': rm.calculate_var() * 100,
-        'total_trades': metrics.get('buy_signals', 0) + metrics.get('sell_signals', 0),
-        'win_rate': metrics.get('win_rate_pct', 0),
-        'initial_value': portfolio_df['total_value'].iloc[0],
-        'final_value': portfolio_df['total_value'].iloc[-1],
-        'days': len(results_df),
+        'total_return': 0,
+        'sharpe_ratio': 0,
+        'max_drawdown': 0,
+        'volatility': log_df['annual_vol'].mean() * 100 if 'annual_vol' in log_df.columns else 0,
+        'var_99': 0,
+        'total_trades': log_df['confirmed'].sum() if 'confirmed' in log_df.columns else 0,
+        'win_rate': (log_df['confirmed'].sum() / len(log_df) * 100) if len(log_df) > 0 else 0,
+        'initial_value': 100_000,
+        'final_value': 100_000,
+        'days': len(log_df),
         'buy_signals': metrics.get('buy_signals', 0),
         'sell_signals': metrics.get('sell_signals', 0),
         'hold_signals': metrics.get('hold_signals', 0),
     }
 
 
-def build_trades_dataframe(portfolio_df_filtered, results_df_filtered):
+def build_trades_dataframe(log_df):
     """Build a portfolio snapshot dataframe with all daily data."""
     try:
-        # Start with portfolio data
-        export_df = portfolio_df_filtered.reset_index()
-        if 'index' in export_df.columns:
-            export_df = export_df.rename(columns={'index': 'date'})
-        
-        # Ensure date is datetime
+        # Start with log data
+        export_df = log_df.reset_index(drop=True)
         export_df['date'] = pd.to_datetime(export_df['date'])
         
-        # Calculate daily changes
-        export_df['btc_quantity_change'] = export_df['btc_quantity'].diff()
+        # Calculate daily changes in target
+        export_df['target_change'] = export_df['target_btc'].diff()
         export_df['transaction'] = np.where(
-            export_df['btc_quantity_change'] > 0, 'BUY',
-            np.where(export_df['btc_quantity_change'] < 0, 'SELL', 'HOLD')
+            export_df['target_change'] > 0, 'BUY',
+            np.where(export_df['target_change'] < 0, 'SELL', 'HOLD')
         )
-        export_df['trade_value_usd'] = (export_df['btc_quantity_change'].abs() * export_df['btc_price']).round(2)
-        
-        # Add signal info if available
-        if 'signal' in results_df_filtered.columns and 'signal_ratio' in results_df_filtered.columns:
-            try:
-                signal_map = results_df_filtered[['date', 'signal', 'signal_ratio', 'btc_price', 'production_cost_smoothed']].copy()
-                signal_map['date'] = pd.to_datetime(signal_map['date'])
-                export_df = export_df.merge(signal_map, on='date', how='left', suffixes=('', '_sig'))
-            except Exception:
-                export_df['signal'] = np.nan
-                export_df['signal_ratio'] = np.nan
-        else:
-            export_df['signal'] = np.nan
-            export_df['signal_ratio'] = np.nan
+        export_df['trade_value_usd'] = (export_df['target_change'].abs() * export_df['btc_price']).round(2)
         
         # Select and order columns
         cols_to_export = [
-            'date', 'btc_price', 'transaction', 'btc_quantity_change', 'trade_value_usd',
-            'btc_quantity', 'btc_value', 'usdc_value', 'total_value',
-            'signal', 'signal_ratio'
+            'date', 'btc_price', 'transaction', 'target_change', 'trade_value_usd',
+            'current_position_btc', 'signal', 'confidence', 'confirmation_reason'
         ]
         cols_available = [c for c in cols_to_export if c in export_df.columns]
         
@@ -390,13 +478,13 @@ try:
     if force_refresh_flag:
         st.session_state['force_refresh'] = False  # Reset flag
     
-    engine, portfolio_df, metrics_raw, rm = fetch_and_run_backtest(
+    strategy, log_df, portfolio_df, metrics_raw, rm = fetch_and_run_backtest(
         str(start_date), 
         str(end_date),
         force_refresh=force_refresh_flag,
         use_risk_management=use_risk_management
     )
-    results_df = engine.backtest_data.copy()
+    results_df = log_df.copy()
     
     # Show total data available
     data_start = pd.to_datetime(results_df['date'].min()).strftime('%Y-%m-%d')
@@ -457,7 +545,7 @@ try:
         'hold_signals': (results_df_filtered['signal'] == 'HOLD').sum(),
     }
 
-    trades_export_df = build_trades_dataframe(portfolio_df_filtered, results_df_filtered)
+    trades_export_df = build_trades_dataframe(log_df)
     pdf_report_bytes = None
     if REPORTLAB_AVAILABLE:
         pdf_report_bytes = create_pdf_report(
@@ -475,6 +563,28 @@ try:
     filtered_end = results_df_filtered['date'].max().strftime('%Y-%m-%d')
     
     st.success(f"Data ready! {len(results_df_filtered)} days ({filtered_start} → {filtered_end})")
+    
+    # Show expected metrics benchmark
+    st.info(f"""
+    **📊 Expected Performance Metrics (for reference)**
+    
+    For period **{filtered_start} to {filtered_end}**:
+    
+    **BTC Buy & Hold baseline:**
+    - Total Return: Depends on start/end prices (can be negative in bear markets)
+    - Volatility: ~60-80% (very volatile)
+    - Max Drawdown: -50% to -76% (2022 crash: -76%)
+    - Sharpe Ratio: 0.2-0.8 (not risk-adjusted)
+    
+    **Good Trading Strategy should have:**
+    - ✅ Total Return: Better or similar to Buy & Hold
+    - ✅ Volatility: **Lower than BTC** (~30-50%, not 60-80%)
+    - ✅ Max Drawdown: **Much lower** (-20% to -40%, not -76%)
+    - ✅ Sharpe Ratio: **>1.0 is good, >1.5 is excellent** (risk-adjusted)
+    - ✅ Win Rate: 50-60% is realistic
+    
+    **What matters most:** Lower drawdown + better Sharpe (risk-adjusted return), not just higher returns!
+    """)
 
     
 except Exception as e:

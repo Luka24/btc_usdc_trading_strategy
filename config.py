@@ -244,8 +244,8 @@ class BacktestConfig:
     """Parameters for backtesting"""
     
     # Data source
-    USE_REAL_DATA = True  # True = API data, False = synthetic data
-    DAYS_TO_FETCH = 3650  # Number of days to fetch from API (10 years)
+    USE_REAL_DATA = True  # True = API data (živé podatke), False = synthetic data
+    DAYS_TO_FETCH = 365   # Število dni za pridobitev (1 leto za hitrejši test)
     
     # Period
     START_DATE = "2016-02-01"  # 10 years of data
