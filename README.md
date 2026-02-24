@@ -10,8 +10,8 @@ A production-ready automated trading system that executes trades on Bitcoin base
 
 This project implements a **mean-reversion trading strategy** that:
 - **Analyzes Bitcoin production costs** using real hashrate, electricity prices, and hardware efficiency data
-- **Generates trading signals** based on Price/Cost ratio analysis
-- **Manages risk** with sophisticated controls (drawdown limits, volatility filters, VaR, stop-loss/take-profit)
+- **Generates trading targets** from EMA-smoothed Price/Cost ratio bands
+- **Manages risk** with a 4-mode professional state machine (DD, Vol, VaR composite + sticky recovery)
 - **Rebalances daily** between BTC and USDC based on signal strength and risk conditions
 - **Backtests systematically** with real historical data (2015-2026)
 - **Monitors live** via interactive Streamlit dashboard
@@ -40,24 +40,21 @@ This project implements a **mean-reversion trading strategy** that:
 - Maintains portfolio state across 5000+ trading days
 
 ### 3. **Risk Management System**
-Five operational risk modes:
+Four operational risk modes:
 - **NORMAL**: Standard conditions
-- **CAUTION**: Elevated risk (drawdown -10%, volatility 60%)
-- **RISK_OFF**: Defensive mode (drawdown -20%, volatility 80%)
-- **EMERGENCY**: Crisis mode (drawdown -30%, volatility 150%)
-- **KILL_SWITCH**: All-cash mode
+- **CAUTION**: Elevated risk (BTC cap 60%)
+- **RISK_OFF**: Defensive mode (BTC cap 30%)
+- **EMERGENCY**: Crisis mode (BTC cap 5%)
 
 Risk controls implemented:
-- Drawdown monitoring with configurable limits
-- 30-day rolling volatility calculations
-- Value-at-Risk (VaR 99%) daily limits
-- Stop-loss/take-profit order logic
-- Trailing stop implementation
-- Consecutive loss tracking
-- Liquidity checks (minimum $300M daily volume)
+- 252-day rolling peak drawdown monitoring
+- 30-day annualized volatility trigger
+- 1-day VaR (99%) trigger
+- Composite mode = most severe trigger
+- Instant crisis downgrade, sticky recovery (7/5/3 days)
 
 ### 4. **Backtesting Engine**
-- Synthetic and real historical data support
+- Real API-backed historical data only (synthetic path disabled)
 - Daily rebalancing with accurate commission modeling
 - Portfolio tracking with OHLC price data
 - Comprehensive metrics calculation:

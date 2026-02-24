@@ -170,7 +170,7 @@ def calculate_display_metrics(engine, portfolio_df, metrics, rm):
         'total_return': metrics['total_return_pct'],
         'sharpe_ratio': metrics['sharpe_ratio'],
         'max_drawdown': metrics['max_drawdown_pct'],
-        'volatility': rm.calculate_volatility() * 100,
+        'volatility': rm.get_volatility() * 100,
         'var_99': rm.calculate_var() * 100,
         'total_trades': metrics.get('buy_signals', 0) + metrics.get('sell_signals', 0),
         'win_rate': metrics.get('win_rate_pct', 0),
@@ -323,13 +323,13 @@ with col_rm1:
     use_risk_management = st.checkbox(
         "Enable Risk Management Protection",
         value=True,
-        help="Turn ON to use stop-loss, take-profit, trailing stops, and other protections. Turn OFF for pure signal-based trading."
+        help="Turn ON to use the 4-mode professional risk engine (DD, Vol, VaR with sticky recovery). Turn OFF for pure signal-based trading."
     )
     
     if use_risk_management:
-        st.success("✅ Risk Management: **ACTIVE** - All protections enabled (stop-loss, take-profit, trailing stop, consecutive loss brake)")
+        st.success("✅ Risk Management: **ACTIVE** - 4-mode engine enabled (NORMAL/CAUTION/RISK_OFF/EMERGENCY)")
     else:
-        st.warning("⚠️ Risk Management: **DISABLED** - Only basic signals used, no automatic protections")
+        st.warning("⚠️ Risk Management: **DISABLED** - Only valuation signal is used (no mode caps)")
 
 with col_rm2:
     st.metric("Protection", "ON" if use_risk_management else "OFF", 

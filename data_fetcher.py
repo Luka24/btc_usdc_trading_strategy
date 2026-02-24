@@ -17,6 +17,7 @@ import time
 import os
 import json
 from config import ProductionCostConfig as CostConfig
+from config import BacktestConfig
 
 try:
     import yfinance as yf
@@ -106,7 +107,7 @@ class CoinGeckoFetcher:
             raise
     
     @staticmethod
-    def fetch_btc_prices(days: int = 365, vs_currency: str = "usd") -> pd.DataFrame:
+    def fetch_btc_prices(days: int = 365, vs_currency: str = "usd", force_refresh: bool = False) -> pd.DataFrame:
         """
         Fetch historical BTC prices with caching.
         Uses Yahoo Finance for longer periods (>365 days) and CoinGecko for shorter.
@@ -118,10 +119,11 @@ class CoinGeckoFetcher:
         Returns:
             pd.DataFrame: DataFrame with columns [date, btc_price]
         """
-        # Try cache first
-        cached = CoinGeckoFetcher._load_from_cache(days)
-        if cached is not None:
-            return cached
+        # Try cache first unless force refresh
+        if not force_refresh:
+            cached = CoinGeckoFetcher._load_from_cache(days)
+            if cached is not None:
+                return cached
         
         # For periods > 365 days, prefer Yahoo Finance (no API limits)
         if days > 365 and YFINANCE_AVAILABLE:
@@ -214,7 +216,7 @@ class BlockchainFetcher:
         print(f"   [CACHE] Saved hashrate to {cache_path}")
     
     @staticmethod
-    def fetch_hashrate(days: int = 365) -> pd.DataFrame:
+    def fetch_hashrate(days: int = 365, force_refresh: bool = False) -> pd.DataFrame:
         """
         Fetch historical hashrate from Blockchain.com with caching.
         
@@ -226,10 +228,11 @@ class BlockchainFetcher:
         Returns:
             pd.DataFrame: DataFrame with columns [date, hashrate_eh_per_s]
         """
-        # Try cache first
-        cached = BlockchainFetcher._load_from_cache(days)
-        if cached is not None:
-            return cached
+        # Try cache first unless force refresh
+        if not force_refresh:
+            cached = BlockchainFetcher._load_from_cache(days)
+            if cached is not None:
+                return cached
         
         print(f"[Blockchain.com] Fetching {days} days of hashrate data...")
         
@@ -367,6 +370,117 @@ class BlockchainFetcher:
         return df
 
 
+class MVRVFetcher:
+    """
+    Fetch BTC MVRV ratio from CoinMetrics Community API and compute Z-score.
+    MVRV = Market Cap / Realized Cap  (free, no API key required)
+    MVRV Z-score = rolling Z-normalization → identifies cycle tops & bottoms.
+    """
+
+    BASE_URL = "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics"
+    DATA_DIR = "data"
+    CACHE_FILE = "mvrv_data.csv"
+
+    @staticmethod
+    def _get_cache_path() -> str:
+        return os.path.join(MVRVFetcher.DATA_DIR, MVRVFetcher.CACHE_FILE)
+
+    @staticmethod
+    def _load_from_cache(min_end_date: 'pd.Timestamp') -> 'Optional[pd.DataFrame]':
+        path = MVRVFetcher._get_cache_path()
+        if os.path.exists(path):
+            df = pd.read_csv(path)
+            df['date'] = pd.to_datetime(df['date'])
+            # Invalidate if cache is stale (last row older than yesterday)
+            if df['date'].max() >= min_end_date - pd.Timedelta(days=2):
+                print(f"   [CACHE] Loaded MVRV data from {path} ({len(df)} rows, "
+                      f"{df['date'].min().date()} – {df['date'].max().date()})")
+                return df
+            print(f"   [CACHE] MVRV cache is stale – refetching...")
+        return None
+
+    @staticmethod
+    def _save_to_cache(df: pd.DataFrame) -> None:
+        os.makedirs(MVRVFetcher.DATA_DIR, exist_ok=True)
+        path = MVRVFetcher._get_cache_path()
+        df.to_csv(path, index=False)
+        print(f"   [CACHE] Saved MVRV data to {path}")
+
+    @staticmethod
+    def fetch_mvrv_z(days: int, z_window: int = 730, force_refresh: bool = False) -> pd.DataFrame:
+        """
+        Fetch MVRV ratio from CoinMetrics and return Z-score column.
+
+        Args:
+            days:         Number of strategy days needed
+            z_window:     Rolling window (days) for Z-score computation
+            force_refresh: Bypass cache
+
+        Returns:
+            DataFrame with columns [date, mvrv, mvrv_z]
+        """
+        print(f"[CoinMetrics] Fetching MVRV Z-score ({days}d strategy + {z_window}d Z-warmup)...")
+
+        end_dt   = pd.Timestamp.now().normalize()
+        start_dt_cache_check = end_dt - pd.Timedelta(days=2)
+
+        if not force_refresh:
+            cached = MVRVFetcher._load_from_cache(start_dt_cache_check)
+            if cached is not None:
+                return cached
+
+        # Fetch enough history for the Z-score rolling window + strategy period
+        total_days = days + z_window + 60  # extra buffer
+        start_date = (datetime.now() - timedelta(days=total_days)).strftime('%Y-%m-%d')
+        end_date   = datetime.now().strftime('%Y-%m-%d')
+
+        params = {
+            'assets':      'btc',
+            'metrics':     'CapMVRVCur',
+            'frequency':   '1d',
+            'start_time':  start_date,
+            'end_time':    end_date,
+            'page_size':   10000,
+        }
+
+        try:
+            r = requests.get(MVRVFetcher.BASE_URL, params=params, timeout=30)
+            r.raise_for_status()
+            raw = r.json().get('data', [])
+
+            rows = []
+            for item in raw:
+                # CoinMetrics returns ISO-8601 UTC strings; convert to tz-naive
+                date_ts = pd.to_datetime(item['time']).tz_convert(None).normalize()
+                mvrv_val = float(item['CapMVRVCur'])
+                rows.append({'date': date_ts, 'mvrv': mvrv_val})
+
+            df = pd.DataFrame(rows)
+            df = (
+                df.sort_values('date')
+                  .drop_duplicates(subset=['date'], keep='last')
+                  .reset_index(drop=True)
+            )
+
+            # Rolling Z-score (min 60 days for meaningful normalisation)
+            roll_mean = df['mvrv'].rolling(window=z_window, min_periods=60).mean()
+            roll_std  = df['mvrv'].rolling(window=z_window, min_periods=60).std(ddof=0)
+            df['mvrv_z'] = (df['mvrv'] - roll_mean) / roll_std.replace(0, np.nan)
+            df['mvrv_z'] = df['mvrv_z'].fillna(0.0)  # neutral during short warmup
+
+            print(f"   [OK] {len(df)} days of MVRV data fetched")
+            print(f"   - MVRV   : {df['mvrv'].min():.2f} – {df['mvrv'].max():.2f}")
+            print(f"   - MVRV Z : {df['mvrv_z'].min():.2f} – {df['mvrv_z'].max():.2f}")
+
+            MVRVFetcher._save_to_cache(df)
+            return df
+
+        except Exception as e:
+            print(f"   [WARN] Could not fetch MVRV from CoinMetrics: {e}")
+            print(f"   [WARN] Continuing with MVRV disabled (neutral weight everywhere)")
+            return pd.DataFrame(columns=['date', 'mvrv', 'mvrv_z'])
+
+
 class DataFetcher:
     """Main class for fetching combined data with caching"""
     
@@ -442,8 +556,9 @@ class DataFetcher:
         print("="*70)
         
         if not use_real_data:
-            print("\n[MODE] Synthetic data (for testing)")
-            return DataFetcher._generate_synthetic_data(days)
+            if BacktestConfig.STRICT_REAL_DATA:
+                raise RuntimeError("Synthetic data path is disabled (STRICT_REAL_DATA=True).")
+            raise RuntimeError("Synthetic data mode is not supported in this strategy version.")
         
         print("\n[MODE] Real historical data\n")
         
@@ -451,24 +566,32 @@ class DataFetcher:
         if not force_refresh:
             cached_data = DataFetcher._load_from_cache(days)
             if cached_data is not None:
-                print(f"   [OK] {len(cached_data)} days of combined data (from cache)")
-                print(f"   - Dates: {cached_data['date'].iloc[0]} to {cached_data['date'].iloc[-1]}")
-                return cached_data
+                # Invalidate combined cache if MVRV column missing (schema upgrade)
+                if 'mvrv_z' not in cached_data.columns:
+                    print("   [CACHE] Combined cache missing mvrv_z – rebuilding...")
+                else:
+                    print(f"   [OK] {len(cached_data)} days of combined data (from cache)")
+                    print(f"   - Dates: {cached_data['date'].iloc[0]} to {cached_data['date'].iloc[-1]}")
+                    return cached_data
         else:
             print("   [REFRESH] Bypassing cache, fetching fresh data...")
         
         # Fetch BTC prices
-        df_prices = CoinGeckoFetcher.fetch_btc_prices(days)
+        df_prices = CoinGeckoFetcher.fetch_btc_prices(days, force_refresh=force_refresh)
         
         print()
         
         # Fetch hashrate
-        df_hashrate = BlockchainFetcher.fetch_hashrate(days)
+        df_hashrate = BlockchainFetcher.fetch_hashrate(days, force_refresh=force_refresh)
         
         # Combine data
         print("\n[MERGE] Combining data...")
         df_prices['date'] = pd.to_datetime(df_prices['date'])
         df_hashrate['date'] = pd.to_datetime(df_hashrate['date'])
+
+        # Normalize duplicates before merge (keep latest record per date)
+        df_prices = df_prices.sort_values('date').drop_duplicates(subset=['date'], keep='last')
+        df_hashrate = df_hashrate.sort_values('date').drop_duplicates(subset=['date'], keep='last')
         
         # Use left merge to keep all price dates
         df_combined = pd.merge(df_prices, df_hashrate, on='date', how='left')
@@ -483,51 +606,45 @@ class DataFetcher:
         # Drop any remaining rows with NaN (shouldn't happen, but just in case)
         df_combined = df_combined.dropna()
         
+        # ── MVRV Z-score (on-chain valuation cycle signal) ──────────────────
+        from config import PortfolioConfig as _PC
+        if getattr(_PC, 'MVRV_ENABLED', False):
+            print("\n[MVRV] Fetching MVRV Z-score...")
+            df_mvrv = MVRVFetcher.fetch_mvrv_z(
+                days=days,
+                z_window=getattr(_PC, 'MVRV_Z_WINDOW', 730),
+                force_refresh=force_refresh,
+            )
+            if not df_mvrv.empty:
+                df_mvrv['date'] = pd.to_datetime(df_mvrv['date']).dt.normalize()
+                df_mvrv = df_mvrv[['date', 'mvrv_z']]
+                df_combined['date'] = pd.to_datetime(df_combined['date']).dt.normalize()
+                df_combined = pd.merge(df_combined, df_mvrv, on='date', how='left')
+                df_combined['mvrv_z'] = df_combined['mvrv_z'].fillna(0.0)
+                print(f"   [OK] MVRV Z merged ({df_combined['mvrv_z'].notna().sum()} non-null rows)")
+            else:
+                df_combined['mvrv_z'] = 0.0
+                print("   [WARN] MVRV data unavailable – using neutral (0.0)")
+        else:
+            df_combined['mvrv_z'] = 0.0
+        # ─────────────────────────────────────────────────────────────────────
+
         # Format as required by backtest engine
-        df_combined['date'] = df_combined['date'].dt.strftime('%Y-%m-%d')
-        df_combined = df_combined[['date', 'btc_price', 'hashrate_eh_per_s']]
-        
+        df_combined['date'] = pd.to_datetime(df_combined['date']).dt.strftime('%Y-%m-%d')
+        df_combined = df_combined[['date', 'btc_price', 'hashrate_eh_per_s', 'mvrv_z']]
+
         print(f"   [OK] {len(df_combined)} days of combined data")
         print(f"   - Dates: {df_combined['date'].iloc[0]} to {df_combined['date'].iloc[-1]}")
         print(f"   [INFO] Hashrate values interpolated linearly for missing dates")
-        
+
         # Save to cache
         DataFetcher._save_to_cache(df_combined, days)
-        
+
         return df_combined
     
     @staticmethod
     def _generate_synthetic_data(days: int = 365) -> pd.DataFrame:
-        """
-        Generate synthetic data (fallback for API issues).
-        """
-        dates = pd.date_range(start="2023-01-01", periods=days, freq="D")
-        
-        # BTC prices
-        base_price = 42000
-        cycle1 = np.sin(np.linspace(0, 4*np.pi, days)) * 5000
-        trend = np.linspace(0, 8000, days)
-        volatility = np.random.normal(0, 2500, days)
-        btc_prices = base_price + cycle1 + trend + volatility
-        btc_prices = np.maximum(btc_prices, 10000)
-        
-        # Hashrate
-        base_hashrate = 400
-        hashrate_cycle = np.sin(np.linspace(0, 4*np.pi, days)) * 40
-        hashrate_trend = np.linspace(0, 100, days)
-        hashrate_noise = np.random.normal(0, 10, days)
-        hashrates = base_hashrate + hashrate_cycle + hashrate_trend + hashrate_noise
-        hashrates = np.maximum(hashrates, 100)
-        
-        df = pd.DataFrame({
-            'date': [d.strftime('%Y-%m-%d') for d in dates],
-            'btc_price': btc_prices,
-            'hashrate_eh_per_s': hashrates,
-        })
-        
-        print(f"   [OK] Generated {len(df)} days of synthetic data")
-        
-        return df
+        raise RuntimeError("Synthetic data generation is disabled. Use API-backed real data only.")
 
 
 # ============ USAGE EXAMPLE ============

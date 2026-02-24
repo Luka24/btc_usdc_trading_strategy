@@ -12,7 +12,7 @@ from config import (
     RiskManagementConfig, BacktestConfig
 )
 from production_cost import BTCProductionCostCalculator, ProductionCostSeries
-from backtest import BacktestEngine, Signal, create_synthetic_data
+from backtest import BacktestEngine, Signal
 from portfolio import PortfolioManager
 from risk_manager import RiskManager
 from data_fetcher import DataFetcher

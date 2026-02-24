@@ -61,7 +61,7 @@ class PortfolioManager:
         """
         
         for min_ratio, max_ratio, weight in self.position_table:
-            if min_ratio <= signal_ratio <= max_ratio:
+            if min_ratio <= signal_ratio < max_ratio:
                 return weight
         
         # Fallback (if ratio outside table)
@@ -294,7 +294,7 @@ class PortfolioManager:
         drawdown = (df['total_value'] - running_max) / running_max
         max_drawdown = drawdown.min() * 100
         
-        btc_trades = (df['btc_weight'].diff().abs() > 0.0-1).sum()
+        btc_trades = (df['btc_weight'].diff().abs() > 1e-6).sum()
         
         return {
             'total_return_pct': total_return,
