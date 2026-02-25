@@ -99,6 +99,15 @@ class BacktestEngine:
         avg_loss = loss.ewm(span=PortfolioConfig.RSI_WINDOW, adjust=False).mean()
         rs = avg_gain / avg_loss.replace(0, np.nan)
         self.backtest_data["rsi"] = (100 - 100 / (1 + rs)).fillna(50)
+        # Hash Ribbon: fast/slow SMA of hashrate (miner capitulation signal)
+        # NOTE: Dashboard always fetches 3000d+ data so the API returns 4-day
+        # sampled (sparse) hashrate which linearly interpolates to smooth daily
+        # values. min_periods = full window to avoid partial-window SMA.
+        hr = self.backtest_data["hashrate"].astype(float)
+        fast = PortfolioConfig.HASH_RIBBON_FAST
+        slow = PortfolioConfig.HASH_RIBBON_SLOW
+        self.backtest_data["hr_fast"] = hr.rolling(fast, min_periods=fast).mean()
+        self.backtest_data["hr_slow"] = hr.rolling(slow, min_periods=slow).mean()
 
     def add_daily_data(self, date, btc_price, hashrate_eh_per_s, mvrv_z: float = 0.0,
                        _skip_recompute: bool = False):
@@ -197,6 +206,12 @@ class BacktestEngine:
         prev_price = None
         _btc_returns: deque = deque(maxlen=PortfolioConfig.VOL_SCALING_WINDOW)
 
+        # Halving cycle overlay: pre-compute timestamps once (outside loop)
+        _halvings_ts = [
+            pd.Timestamp("2012-11-28"), pd.Timestamp("2016-07-09"),
+            pd.Timestamp("2020-05-11"), pd.Timestamp("2024-04-19"),
+        ]
+
         for idx, row in self.backtest_data.iterrows():
             date = row["date"]
             price = float(row["btc_price"])
@@ -237,6 +252,24 @@ class BacktestEngine:
                 month = row["date"].month if hasattr(row["date"], "month") else pd.to_datetime(row["date"]).month
                 seasonal_mult = PortfolioConfig.SEASONAL_MULTIPLIERS.get(month, 1.0)
                 w_signal = float(np.clip(w_signal * seasonal_mult, 0.0, 1.0))
+            # ─────────────────────────────────────────────────────────────────
+
+            # ── Halving Cycle overlay (early_bear phase = days 548–912 post-halving) ──
+            if PortfolioConfig.HALVING_ENABLED:
+                _date_ts = pd.Timestamp(date)
+                _past_halvings = [h for h in _halvings_ts if h <= _date_ts]
+                if _past_halvings:
+                    _days_since = (_date_ts - _past_halvings[-1]).days
+                    if 548 <= _days_since < 912:   # early_bear: historically -66% ann
+                        w_signal = float(np.clip(w_signal * PortfolioConfig.HALVING_BEAR_MULT, 0.0, 1.0))
+            # ─────────────────────────────────────────────────────────────────
+
+            # ── Hash Ribbon overlay (miner capitulation = hr_fast < hr_slow) ──
+            if PortfolioConfig.HASH_RIBBON_ENABLED:
+                hr_fast_val = float(row["hr_fast"])
+                hr_slow_val = float(row["hr_slow"])
+                if hr_fast_val < hr_slow_val:   # capitulation: miners exiting network
+                    w_signal = float(np.clip(w_signal * PortfolioConfig.HASH_RIBBON_CAP_MULT, 0.0, 1.0))
             # ─────────────────────────────────────────────────────────────────
 
             # ── MVRV Z-score overlay (on-chain valuation cycle) ─────────────

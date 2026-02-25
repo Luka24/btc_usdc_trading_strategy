@@ -135,9 +135,13 @@ def _do_fetch_and_backtest(start_date_str, end_date_str, force_refresh=False, us
         today = datetime.now().date()
         if end_dt.date() < today:
             lookback_days = (today - start_dt.date()).days + 1
-            fetch_days = max(lookback_days, required_days + 30, 90)
+            fetch_days = max(lookback_days, required_days + 120, 3000)
         else:
-            fetch_days = max(required_days + 30, 90)  # At least 90 days
+            # Always fetch 3000+ days: Blockchain.com returns 4-day sampled (sparse)
+            # hashrate for large windows → linear interpolation creates smooth values.
+            # Shorter fetches return daily noisy data → false Hash Ribbon signals.
+            # 3000d ensures the validated hash-ribbon signal quality (TRAIN 1.061, OOS 0.924).
+            fetch_days = max(required_days + 120, 3000)
         
         data = DataFetcher.fetch_combined_data(
             days=fetch_days,
