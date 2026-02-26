@@ -11,7 +11,7 @@ class RiskMode(Enum):
 
 
 class RiskManager:
-    """Professional risk engine with asymmetric transitions and sticky recovery."""
+    """Risk engine with asymmetric mode transitions and sticky recovery."""
 
     _SEVERITY = {
         RiskMode.NORMAL: 0,
@@ -160,6 +160,5 @@ class RiskManager:
     def get_volatility(self) -> float:
         return self.last_volatility
 
-    def calculate_var(self, confidence: float = 0.99) -> float:
-        _ = confidence
+    def calculate_var(self) -> float:
         return -self.last_var_pct

@@ -54,10 +54,6 @@ class BacktestEngine:
         self.enable_risk_management = enable_risk_management
         self.backtest_data = pd.DataFrame()
 
-    @classmethod
-    def init(cls, **kwargs):
-        return cls(**kwargs)
-
     def _signal_weight_from_ratio(self, ratio_ema: float) -> float:
         for min_ratio, max_ratio, weight in SignalConfig.POSITION_TABLE:
             if min_ratio <= ratio_ema < max_ratio:
@@ -99,10 +95,7 @@ class BacktestEngine:
         avg_loss = loss.ewm(span=PortfolioConfig.RSI_WINDOW, adjust=False).mean()
         rs = avg_gain / avg_loss.replace(0, np.nan)
         self.backtest_data["rsi"] = (100 - 100 / (1 + rs)).fillna(50)
-        # Hash Ribbon: fast/slow SMA of hashrate (miner capitulation signal)
-        # NOTE: Dashboard always fetches 3000d+ data so the API returns 4-day
-        # sampled (sparse) hashrate which linearly interpolates to smooth daily
-        # values. min_periods = full window to avoid partial-window SMA.
+        # Hash Ribbon: fast/slow SMA of hashrate
         hr = self.backtest_data["hashrate"].astype(float)
         fast = PortfolioConfig.HASH_RIBBON_FAST
         slow = PortfolioConfig.HASH_RIBBON_SLOW
@@ -141,7 +134,6 @@ class BacktestEngine:
             "trend_ema": float(btc_price),
             "rsi": 50.0,
             "mvrv_z": float(mvrv_z),
-            "mvrv_z": 0.0,
         }
 
         self.backtest_data = pd.concat([self.backtest_data, pd.DataFrame([row])], ignore_index=True)
