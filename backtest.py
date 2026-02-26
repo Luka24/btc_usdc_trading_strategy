@@ -3,10 +3,9 @@ import numpy as np
 from datetime import datetime
 from enum import Enum
 
-from production_cost import ProductionCostSeries
+from production_cost import ProductionCostSeries, get_block_reward_for_date
 from portfolio import PortfolioManager
 from risk_manager import RiskManager
-from config import ProductionCostConfig as CostConfig
 from config import SignalConfig, PortfolioConfig
 from collections import deque
 
@@ -15,31 +14,6 @@ class Signal(Enum):
     BUY = "BUY"
     HOLD = "HOLD"
     SELL = "SELL"
-
-
-def get_block_reward(date_input):
-    halving_schedule = [
-        (datetime.strptime(d, "%Y-%m-%d"), r)
-        for d, r in CostConfig.HALVING_SCHEDULE
-    ]
-
-    if isinstance(date_input, str):
-        date = datetime.strptime(date_input, "%Y-%m-%d")
-    else:
-        date = pd.Timestamp(date_input).to_pydatetime()
-
-    for halving_date, reward in halving_schedule:
-        if date < halving_date:
-            idx = halving_schedule.index((halving_date, reward))
-            if idx == 0:
-                return CostConfig.PRE_HALVING_REWARD
-            return halving_schedule[idx - 1][1]
-
-    return halving_schedule[-1][1]
-
-
-def get_block_reward_for_date(date_input):
-    return get_block_reward(date_input)
 
 
 class BacktestEngine:
@@ -104,7 +78,7 @@ class BacktestEngine:
 
     def add_daily_data(self, date, btc_price, hashrate_eh_per_s, mvrv_z: float = 0.0,
                        _skip_recompute: bool = False):
-        block_reward = get_block_reward(date)
+        block_reward = get_block_reward_for_date(date)
         cost_data = self.cost_series.add_daily_data(date, hashrate_eh_per_s)
 
         row = {
@@ -145,7 +119,7 @@ class BacktestEngine:
         mvrv_col_exists = 'mvrv_z' in df.columns
         rows = []
         for _, row in df.iterrows():
-            block_reward = get_block_reward(row["date"])
+            block_reward = get_block_reward_for_date(row["date"])
             cost_data = self.cost_series.add_daily_data(row["date"], row["hashrate_eh_per_s"])
             mvrv_z = float(row["mvrv_z"]) if mvrv_col_exists else 0.0
             rows.append({
@@ -315,11 +289,7 @@ class BacktestEngine:
             trade_size_weight = abs(w_exec - current_weight)
             signal = self._signal_label_from_weight(current_weight, w_exec)
 
-            self.portfolio_manager.execute_rebalance(
-                price,
-                self.portfolio_manager.btc_quantity,
-                w_exec,
-            )
+            self.portfolio_manager.execute_rebalance(price, w_exec)
 
             nav_after = self.get_portfolio_value(price)
             prev_nav = nav_after

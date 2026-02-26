@@ -201,7 +201,7 @@ def run_backtest_with_params(
         ratio = float(row["ratio"])
 
         rebalance = pm.rebalance(ratio, enforce_limit=True)
-        pm.execute_rebalance(price, pm.btc_quantity, rebalance["actual_weight"])
+        pm.execute_rebalance(price, rebalance["actual_weight"])
 
         if ratio < buy_threshold:
             signal = "BUY"

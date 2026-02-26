@@ -17,8 +17,7 @@ class PortfolioManager:
         self.max_daily_change = max_daily_change
         
         self.portfolio_history = []
-        self.current_btc_weight = 0.50  # Start with 50% BTC
-        self.previous_btc_weight = 0.50
+        self.current_btc_weight = 0.50
         self.btc_quantity = 0.0
         self.usdc_quantity = self.initial_capital
 
@@ -65,7 +64,6 @@ class PortfolioManager:
             actual_weight = self.apply_weight_change_limit(target_weight)
         else:
             actual_weight = target_weight
-        self.previous_btc_weight = self.current_btc_weight
         self.current_btc_weight = actual_weight
         return {
             'target_weight': target_weight,
@@ -91,13 +89,12 @@ class PortfolioManager:
             'usdc_weight': usdc_value / total_value if total_value > 0 else 0,
         }
     
-    def execute_rebalance(self, btc_price: float, btc_quantity: float,
-                          target_weight: float, fees: float = Config.TRADING_FEES_PERCENT) -> dict:
+    def execute_rebalance(self, btc_price: float, target_weight: float,
+                          fees: float = Config.TRADING_FEES_PERCENT) -> dict:
         """Execute a rebalance trade and update internal holdings."""
         current_portfolio = self.calculate_portfolio_value(btc_price, self.btc_quantity)
         current_btc_value = current_portfolio['btc_value']
-        current_usdc_value = current_portfolio['usdc_value']
-        total_value = current_btc_value + current_usdc_value
+        total_value = current_btc_value + current_portfolio['usdc_value']
         
         # Target value BTC
         target_btc_value = total_value * target_weight
@@ -125,17 +122,14 @@ class PortfolioManager:
             trade_cost = 0
             transaction = "NONE"
         
-        new_btc_quantity = self.btc_quantity
-        new_portfolio = self.calculate_portfolio_value(btc_price, new_btc_quantity)
-        
         return {
             'transaction': transaction,
             'btc_quantity_change': btc_quantity_delta,
             'btc_value_change': btc_value_delta,
             'trade_cost': trade_cost,
             'old_portfolio': current_portfolio,
-            'new_portfolio': new_portfolio,
-            'new_btc_quantity': new_btc_quantity,
+            'new_portfolio': self.calculate_portfolio_value(btc_price, self.btc_quantity),
+            'new_btc_quantity': self.btc_quantity,
         }
     
     def add_to_history(self, date: str, btc_price: float, btc_quantity: float,
@@ -154,7 +148,6 @@ class PortfolioManager:
             'total_value': portfolio_value['total_value'],
             'signal_ratio': signal_ratio,
             'signal': signal,
-            'btc_price_change_pct': None,
         }
         self.portfolio_history.append(snapshot)
         return snapshot

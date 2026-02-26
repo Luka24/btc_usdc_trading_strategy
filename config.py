@@ -17,12 +17,8 @@ def _year_lookup(table: dict, date) -> float:
 
 
 class HistoricalParameters:
-    # US electricity prices ($/kWh) for medium-to-large mining operations,
-    # including cooling and facility overhead (not just generation cost).
-    # Sources: US EIA, industry reports.
-    
-    # Historical US electricity prices ($/kWh) - realistic for medium-large miners
-    # Includes: cooling losses, facility overhead (not pure generation cost)
+    # Electricity prices ($/kWh) for medium-large mining ops.
+    # Includes cooling losses, facility overhead (not just generation cost). Sources: US EIA, industry reports.
     ELECTRICITY_PRICES_USD_PER_KWH = {
         2016: 0.10,  # Much higher in early days - smaller operations, less efficient
         2017: 0.10,  # Still high - rapid growth, inefficient setups
@@ -69,8 +65,6 @@ class ProductionCostConfig:
     OVERHEAD_FACTOR = 1.47
 
     BLOCKS_PER_DAY = 144
-    BLOCK_REWARD = 3.125   # after 2024 halving
-
     PRE_HALVING_REWARD = 50.0
     HALVING_SCHEDULE = [
         ("2012-11-28", 25.0),
@@ -162,8 +156,6 @@ class PortfolioConfig:
     HASH_RIBBON_CAP_MULT = 0.00
 
     TRADING_FEES_PERCENT = 0.001
-    SLIPPAGE_PERCENT = 0.002
-
     INITIAL_PORTFOLIO_USD = 100_000
 
 
@@ -216,7 +208,6 @@ class BacktestConfig:
     """Backtest run parameters."""
 
     USE_REAL_DATA = True
-    STRICT_REAL_DATA = True
     DAYS_TO_FETCH = 3650
 
     START_DATE = "2016-02-01"

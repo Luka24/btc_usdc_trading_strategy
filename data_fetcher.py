@@ -17,7 +17,6 @@ import time
 import os
 import json
 from config import ProductionCostConfig as CostConfig
-from config import BacktestConfig
 
 try:
     import yfinance as yf
@@ -107,18 +106,8 @@ class CoinGeckoFetcher:
             raise
     
     @staticmethod
-    def fetch_btc_prices(days: int = 365, vs_currency: str = "usd", force_refresh: bool = False) -> pd.DataFrame:
-        """
-        Fetch historical BTC prices with caching.
-        Uses Yahoo Finance for longer periods (>365 days) and CoinGecko for shorter.
-        
-        Args:
-            days (int): Number of days to fetch
-            vs_currency (str): Currency (usd, eur, etc.)
-            
-        Returns:
-            pd.DataFrame: DataFrame with columns [date, btc_price]
-        """
+    def fetch_btc_prices(days: int = 365, force_refresh: bool = False) -> pd.DataFrame:
+        """Fetch historical BTC prices with caching. Uses Yahoo Finance for >365 days, CoinGecko otherwise."""
         # Try cache first unless force refresh
         if not force_refresh:
             cached = CoinGeckoFetcher._load_from_cache(days)
@@ -133,12 +122,11 @@ class CoinGeckoFetcher:
         
         print(f"[CoinGecko] Fetching {days} days of BTC prices...")
         
-        requested_days = days
-        days_param = "max" if requested_days > 365 else requested_days
+        days_param = "max" if days > 365 else days
         
         url = f"{CoinGeckoFetcher.BASE_URL}/coins/bitcoin/market_chart"
         params = {
-            "vs_currency": vs_currency,
+            "vs_currency": "usd",
             "days": days_param,
             "interval": "daily"
         }
@@ -158,10 +146,10 @@ class CoinGeckoFetcher:
             
             df = df[['date', 'btc_price']].reset_index(drop=True)
             
-            # If we fetched max history, trim to requested days
-            if requested_days > 0 and len(df) > requested_days:
-                df = df.tail(requested_days).reset_index(drop=True)
-                print(f"   [INFO] Trimmed to last {requested_days} days")
+            # Trim to requested days if CoinGecko returned more than asked
+            if len(df) > days:
+                df = df.tail(days).reset_index(drop=True)
+                print(f"   [INFO] Trimmed to last {days} days")
             
             print(f"   [OK] Fetched {len(df)} days of data")
             print(f"   - From: {df['date'].iloc[0]}")
@@ -306,68 +294,6 @@ class BlockchainFetcher:
             print(f"     3. Wait and retry (API rate limit)")
             print(f"     4. Use alternative API (requires implementation)")
             raise RuntimeError(f"Failed to fetch hashrate data from API. Estimation disabled. Error: {e}")
-    
-    @staticmethod
-    def _estimate_hashrate(start_date: 'datetime.date', days: int) -> pd.DataFrame:
-        """
-        Estimate hashrate based on historical anchor points and interpolation.
-        Uses real historical difficulty data converted to hashrate.
-        """
-        dates = pd.date_range(start=start_date, periods=days, freq="D")
-        
-        print(f"   [INFO] Hashrate data - using historical interpolation model...")
-        
-        # Historical anchor points (derived from real difficulty data)
-        # Difficulty to Hashrate: hashrate ≈ difficulty * 2^32 / 600 / 1e18
-        historical_points = [
-            (datetime(2016, 1, 1), 0.72),   # 103T difficulty
-            (datetime(2017, 1, 1), 2.2),    # 317T difficulty
-            (datetime(2018, 1, 1), 13.3),   # 1.9P difficulty
-            (datetime(2019, 1, 1), 39.2),   # 5.6P difficulty
-            (datetime(2020, 1, 1), 96.6),   # 13.8P difficulty
-            (datetime(2021, 1, 1), 144.2),  # 20.6P difficulty
-            (datetime(2022, 1, 1), 170.1),  # 24.3P difficulty
-            (datetime(2023, 1, 1), 247.1),  # 35.3P difficulty
-            (datetime(2024, 1, 1), 511.0),  # 73P difficulty
-            (datetime(2025, 1, 1), 616.0),  # 88P difficulty
-            (datetime(2026, 2, 1), 805.0),  # 115P difficulty
-        ]
-        
-        # Convert to pandas for interpolation
-        anchor_dates = [p[0] for p in historical_points]
-        anchor_hashrates = [p[1] for p in historical_points]
-        
-        # Create interpolation function
-        from scipy.interpolate import interp1d
-        anchor_timestamps = [d.timestamp() for d in anchor_dates]
-        interp_func = interp1d(anchor_timestamps, anchor_hashrates, 
-                               kind='linear', fill_value='extrapolate')
-        
-        # Interpolate for all dates
-        date_timestamps = [d.timestamp() for d in dates]
-        base_hashrates = interp_func(date_timestamps)
-        
-        # Add realistic daily variations (±5% noise)
-        daily_variation = np.random.normal(0, base_hashrates * 0.02, days)
-        
-        # Add difficulty adjustment cycles (every ~2 weeks)
-        cycle_variation = base_hashrates * 0.03 * np.sin(np.linspace(0, days/14 * 2*np.pi, days))
-        
-        hashrates = base_hashrates + daily_variation + cycle_variation
-        hashrates = np.maximum(hashrates, 0.5)  # Minimum realistic hashrate
-        
-        df = pd.DataFrame({
-            'date': [d.date() for d in dates],
-            'hashrate_eh_per_s': hashrates,
-        })
-        
-        print(f"   [OK] Estimated {len(df)} days of hashrate data")
-        print(f"   - Average: {df['hashrate_eh_per_s'].mean():.1f} EH/s")
-        print(f"   - Min: {df['hashrate_eh_per_s'].min():.1f} EH/s")
-        print(f"   - Max: {df['hashrate_eh_per_s'].max():.1f} EH/s")
-        print(f"   - StdDev: {df['hashrate_eh_per_s'].std():.1f} EH/s")
-        
-        return df
 
 
 class MVRVFetcher:
@@ -511,31 +437,6 @@ class DataFetcher:
         print(f"   [CACHE] Saved combined data to {cache_path}")
     
     @staticmethod
-    def get_current_block_reward() -> float:
-        """
-        Get current BTC block reward based on halving history.
-        Halvings: 2012-11-28 (50->25), 2016-07-09 (25->12.5), 
-                  2020-05-11 (12.5->6.25), 2024-04-20 (6.25->3.125)
-        """
-        halving_dates = [
-            (datetime.strptime(date_str, '%Y-%m-%d'), reward)
-            for date_str, reward in CostConfig.HALVING_SCHEDULE
-        ]
-        
-        current = datetime.now()
-        for halving_date, reward in halving_dates:
-            if current < halving_date:
-                # Return reward from the previous halving
-                idx = halving_dates.index((halving_date, reward))
-                if idx == 0:
-                    return CostConfig.PRE_HALVING_REWARD  # Before first halving
-                else:
-                    return halving_dates[idx - 1][1]
-        
-        # Current date is after all known halvings, return latest
-        return halving_dates[-1][1]
-    
-    @staticmethod
     def fetch_combined_data(days: int = 365, 
                            use_real_data: bool = True,
                            force_refresh: bool = False) -> pd.DataFrame:
@@ -556,8 +457,6 @@ class DataFetcher:
         print("="*70)
         
         if not use_real_data:
-            if BacktestConfig.STRICT_REAL_DATA:
-                raise RuntimeError("Synthetic data path is disabled (STRICT_REAL_DATA=True).")
             raise RuntimeError("Synthetic data mode is not supported in this strategy version.")
         
         print("\n[MODE] Real historical data\n")
@@ -642,9 +541,7 @@ class DataFetcher:
 
         return df_combined
     
-    @staticmethod
-    def _generate_synthetic_data(days: int = 365) -> pd.DataFrame:
-        raise RuntimeError("Synthetic data generation is disabled. Use API-backed real data only.")
+
 
 
 # ============ USAGE EXAMPLE ============
