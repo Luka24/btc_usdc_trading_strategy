@@ -289,10 +289,20 @@ class PortfolioManager:
         
         daily_returns = df['total_value'].pct_change().dropna()
         sharpe_ratio = daily_returns.mean() / daily_returns.std() * np.sqrt(252) if daily_returns.std() > 0 else 0
-        
+
+        # Sortino: kaznuje samo downside volatility (primernejše za BTC fat-tails)
+        downside_returns = daily_returns[daily_returns < 0]
+        downside_std = downside_returns.std()
+        sortino_ratio = daily_returns.mean() / downside_std * np.sqrt(252) if downside_std > 0 else 0
+
         running_max = df['total_value'].cummax()
         drawdown = (df['total_value'] - running_max) / running_max
         max_drawdown = drawdown.min() * 100
+
+        # Calmar: CAGR / |MaxDrawdown| — standard za buy-side kapitalsko zaščito
+        n_years = len(daily_returns) / 252
+        cagr = ((df['total_value'].iloc[-1] / df['total_value'].iloc[0]) ** (1 / n_years) - 1) * 100 if n_years > 0 else 0
+        calmar_ratio = cagr / abs(max_drawdown) if max_drawdown != 0 else 0
         
         btc_trades = (df['btc_weight'].diff().abs() > 1e-6).sum()
         
@@ -301,6 +311,9 @@ class PortfolioManager:
             'avg_daily_return_pct': daily_returns.mean() * 100,
             'daily_volatility_pct': daily_returns.std() * 100,
             'sharpe_ratio': sharpe_ratio,
+            'sortino_ratio': sortino_ratio,
+            'calmar_ratio': calmar_ratio,
+            'cagr_pct': cagr,
             'max_drawdown_pct': max_drawdown,
             'num_trades': btc_trades,
             'final_value': df['total_value'].iloc[-1],
