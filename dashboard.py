@@ -28,10 +28,34 @@ except Exception:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import modules
+import json
 from data_fetcher import DataFetcher
 from backtest import BacktestEngine
 from risk_manager import RiskManager
 from config import BacktestConfig
+import config as _cfg
+
+# Apply optimized parameters from best_params.json if available
+_bp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'optimization', 'best_params.json')
+if os.path.exists(_bp_path):
+    with open(_bp_path) as _f:
+        _bp = json.load(_f)
+    _ga, _gb, _gc = _bp['group_a'], _bp['group_b'], _bp['group_c']
+    _cfg.SignalConfig.PRICE_EMA_WINDOW       = _ga['PRICE_EMA_WINDOW']
+    _cfg.SignalConfig.COST_EMA_WINDOW        = _ga['COST_EMA_WINDOW']
+    _cfg.SignalConfig.SIGNAL_EMA_WINDOW      = _ga['SIGNAL_EMA_WINDOW']
+    _cfg.PortfolioConfig.TREND_FILTER_WINDOW = _ga['TREND_FILTER_WINDOW']
+    _cfg.PortfolioConfig.RSI_OVERSOLD        = _ga['RSI_OVERSOLD']
+    _cfg.PortfolioConfig.VOL_TARGET          = _ga['VOL_TARGET']
+    _cfg.RiskManagementConfig.DD_THRESHOLDS.update(_gb['DD_THRESHOLDS'])
+    _cfg.RiskManagementConfig.VOL_THRESHOLDS.update(_gb['VOL_THRESHOLDS'])
+    _cfg.PortfolioConfig.HALVING_BEAR_MULT    = _gc['HALVING_BEAR_MULT']
+    _cfg.PortfolioConfig.HASH_RIBBON_CAP_MULT = _gc['HASH_RIBBON_CAP_MULT']
+    _BEST_PARAMS_LOADED = True
+    _BEST_PARAMS_SORTINO = _bp.get('final_sortino', None)
+else:
+    _BEST_PARAMS_LOADED = False
+    _BEST_PARAMS_SORTINO = None
 
 # Page config
 st.set_page_config(
@@ -256,6 +280,7 @@ def create_pdf_report(display_metrics, results_df_filtered, portfolio_df_filtere
     metric_lines = [
         f"Total Return: {display_metrics['total_return']:.2f}%",
         f"Sharpe Ratio: {display_metrics['sharpe_ratio']:.3f}",
+        f"Sortino Ratio: {display_metrics.get('sortino_ratio', 0):.3f}",
         f"Max Drawdown: {display_metrics['max_drawdown']:.2f}%",
         f"Volatility (30d): {display_metrics['volatility']:.2f}%",
         f"Win Rate: {display_metrics['win_rate']:.1f}%",
@@ -440,7 +465,9 @@ try:
     
     daily_returns = portfolio_df_filtered['total_value'].pct_change().dropna()
     sharpe = (daily_returns.mean() / daily_returns.std()) * np.sqrt(252) if len(daily_returns) > 0 and daily_returns.std() > 0 else 0
-    
+    downside = daily_returns[daily_returns < 0]
+    sortino = (daily_returns.mean() / downside.std()) * np.sqrt(252) if len(downside) > 1 and downside.std() > 0 else 0
+
     cummax = portfolio_df_filtered['total_value'].cummax()
     drawdown = ((portfolio_df_filtered['total_value'] - cummax) / cummax) * 100
     max_dd = drawdown.min()
@@ -448,6 +475,7 @@ try:
     display_metrics = {
         'total_return': total_return,
         'sharpe_ratio': sharpe,
+        'sortino_ratio': sortino,
         'max_drawdown': max_dd,
         'volatility': daily_returns.std() * np.sqrt(252) * 100 if len(daily_returns) > 0 else 0,
         'var_99': daily_returns.quantile(0.01) * 100 if len(daily_returns) > 0 else 0,
@@ -487,8 +515,10 @@ except Exception as e:
     st.stop()
 
 # Metrics Row
+if _BEST_PARAMS_LOADED:
+    st.success(f"✅ Optimized parameters loaded (walk-forward OOS Sortino = {_BEST_PARAMS_SORTINO:.3f})")
 st.markdown("### Main Numbers")
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 with col1:
     st.metric(
@@ -499,12 +529,19 @@ with col1:
 
 with col2:
     st.metric(
-        "Sharpe Number",
+        "Sharpe",
         f"{display_metrics['sharpe_ratio']:.3f}",
         delta=None
     )
 
 with col3:
+    st.metric(
+        "Sortino",
+        f"{display_metrics['sortino_ratio']:.3f}",
+        delta=None
+    )
+
+with col4:
     st.metric(
         "Biggest Loss",
         f"{display_metrics['max_drawdown']:.2f}%",
@@ -512,14 +549,14 @@ with col3:
         delta_color="inverse"
     )
 
-with col4:
+with col5:
     st.metric(
         "Volatility (Annual)",
         f"{display_metrics['volatility']:.2f}%",
         delta=None
     )
 
-with col5:
+with col6:
     st.metric(
         "Win Rate",
         f"{display_metrics['win_rate']:.1f}%",
