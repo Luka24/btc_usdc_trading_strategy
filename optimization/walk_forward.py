@@ -92,15 +92,15 @@ def run_fold(
     enable_risk_management: bool = True,
 ) -> dict:
     """
-    Run backtest on the OOS window of a single fold.
+    Run backtest on one fold.
 
-    Returns dict with sortino_ratio, sharpe_ratio, max_drawdown_pct,
-    total_return_pct, and fold metadata.
+    The engine is fed data from train_start through oos_end so that
+    long-period indicators (e.g. 250-day trend EMA) are properly warmed up
+    before the OOS window begins.  Metrics are then computed on the OOS
+    slice only, giving unbiased out-of-sample figures.
     """
     oos_df = _slice(df_full, fold.oos_start, fold.oos_end)
-
     if len(oos_df) < 30:
-        # Not enough data — return sentinel
         return {
             "fold": fold.name,
             "sortino_ratio": -99.0,
@@ -111,13 +111,21 @@ def run_fold(
             "error": "insufficient_data",
         }
 
+    # Feed train+OOS to the engine so indicators warm up properly.
+    warmup_slice = _slice(df_full, fold.train_start, fold.oos_end)
+
     eng = BacktestEngine(
         initial_capital=initial_capital,
         enable_risk_management=enable_risk_management,
     )
-    eng.add_from_dataframe(oos_df)
+    eng.add_from_dataframe(warmup_slice)
     eng.run_backtest(initial_btc_quantity=initial_btc)
-    m = eng.calculate_metrics()
+
+    # Trim portfolio history to OOS only before computing metrics.
+    oos_start_ts = pd.Timestamp(fold.oos_start)
+    portfolio_df = eng.portfolio_manager.get_portfolio_dataframe()
+    oos_portfolio = portfolio_df[portfolio_df.index >= oos_start_ts].copy()
+    m = eng.portfolio_manager.calculate_metrics(oos_portfolio)
 
     return {
         "fold": fold.name,
