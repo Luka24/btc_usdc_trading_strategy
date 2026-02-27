@@ -43,6 +43,8 @@ h2 { color: #3b4637; }
 
     st.title("Strategy & Methodology - Complete Documentation")
 
+    st.caption("Most of this page is already up to date. Full update in progress — will be completed by end of February 27, 2026.")
+
     st.markdown(
         """
 This page explains how the trading strategy works. You can read about the main ideas, where I got the data, 
