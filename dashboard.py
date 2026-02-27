@@ -316,7 +316,7 @@ def create_pdf_report(display_metrics, results_df_filtered, portfolio_df_filtere
     return buffer.getvalue()
 
 # Header
-st.title("BTC/USDC Mean-Reversion Strategy")
+st.title("BTC/USDC Trading Strategy")
 st.markdown("Live data via CoinGecko and Blockchain.info | Updates hourly")
 
 st.markdown(
@@ -324,9 +324,10 @@ st.markdown(
     <div style="border:1px solid #E6E9EF; background:#F7F9FC; padding:16px 18px; border-radius:12px; margin:8px 0 14px 0;">
         <div style="font-size:18px; font-weight:700; color:#3b4637;">Strategy Overview</div>
         <div style="margin-top:6px; color:#3C4858; font-size:15px;">
-            A systematic mean-reversion strategy that sizes BTC exposure based on how far the price deviates
-            from its estimated production cost, with multiple independent risk filters running on top.
-            Full methodology and parameter details are in the Strategy page.
+            A systematic strategy that sizes BTC exposure based on how far the price deviates from its
+            estimated production cost, with multiple independent risk filters on top.
+            <strong>All parameters were optimised for Sortino ratio</strong> using walk-forward cross-validation
+            (out-of-sample Sortino = 2.443). Full methodology in the Strategy page.
         </div>
     </div>
     """,
@@ -497,9 +498,8 @@ except Exception as e:
     st.stop()
 
 # Metrics Row
-if _BEST_PARAMS_LOADED:
-    st.success(f"✅ Optimized parameters loaded (walk-forward OOS Sortino = {_BEST_PARAMS_SORTINO:.3f})")
 st.markdown("### Performance Metrics")
+st.caption("★ All strategy parameters were optimised to maximise **Sortino ratio** (out-of-sample). It is the primary metric to evaluate.")
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 with col1:
@@ -548,7 +548,7 @@ with col4:
         help=(
             "Largest peak-to-trough decline over the selected period.\n"
             "Formula: (portfolio value − running peak) / running peak × 100\n"
-            "The risk engine activates: CAUTION at −12%, RISK_OFF at −20%, EMERGENCY at −35%."
+            "The risk engine activates: CAUTION at −6%, RISK_OFF at −36%, EMERGENCY at −53%."
         )
     )
 
@@ -613,12 +613,32 @@ st.markdown("""
 **Portfolio value** = BTC position + USDC position. The backtest opens with up to 2 BTC (remaining capital in USDC at the first day's price). Changing the date range reruns the backtest — data is cached for 1 hour.
 """)
 
-with st.expander("How this strategy works", expanded=False):
+st.markdown("""
+<div style="border:2px solid #f0a500; border-radius:6px; padding:8px 14px; background:#fffbe6; color:#333; margin-bottom:6px">
+⚠️ <strong>Read before interpreting results</strong> — expand the section below for signal logic, ablation results, and risk engine details.
+</div>
+""", unsafe_allow_html=True)
+with st.expander("How this strategy works", expanded=True):
+    st.markdown(
+        '''<div style="border-left:3px solid #e07b00;background:#fff9f2;padding:7px 14px;margin-bottom:10px;font-size:14px;color:#1c1c1c;line-height:1.55;">
+        All parameters were optimised for <strong>Sortino ratio</strong> using walk-forward cross-validation — out-of-sample Sortino = <strong>2.443</strong>. This is the primary metric to evaluate.
+        </div>''',
+        unsafe_allow_html=True
+    )
     st.markdown("""
+    > **EMA (Exponential Moving Average):** a weighted average that gives more weight to recent values.
+    > Window = N days means older data fades out; the most recent day carries the most weight.
+    > Used here to smooth price and mining cost so the signal reacts to trends, not daily noise.
+    >
+    > **RSI (Relative Strength Index, 14-day):** momentum oscillator ranging 0–100.
+    > RSI < 30 = oversold (sellers exhausted); RSI > 70 = overbought.
+    > Used here as a small position boost when the market is deeply oversold.
+
+    ---
     #### Core signal — Price vs. Mining Cost ratio
-    Bitcoin's production cost is estimated daily from network hashrate and electricity prices.
-    When price drops well below what it costs to mine a coin, miners operate at a loss — something
-    that cannot go on indefinitely. The ratio (price ÷ cost) is used to set BTC allocation each day:
+    Bitcoin’s daily production cost is estimated from network hashrate and electricity prices.
+    When price falls below mining cost, miners run at a loss — unsustainable long-term.
+    The ratio (price ÷ cost) sets the BTC allocation each day:
 
     | Ratio | BTC allocation |
     |---|---|
@@ -629,89 +649,63 @@ with st.expander("How this strategy works", expanded=False):
     | 1.10 – 1.25 | 30% |
     | > 1.25 | **0%** |
 
-    **Smoothing (concrete numbers):** Before computing the ratio, price is smoothed with a
-    **30-day exponential moving average (EMA)** and mining cost with a **90-day EMA**.
-    An EMA with window N moves by a factor of 2/(N+1) toward the current value each day —
-    so the 30-day price EMA shifts at most ~6.5% per day toward raw price,
-    and the 90-day cost EMA shifts at most ~2.2% per day.
-    In practice the ratio can only move a small fraction each day, so the portfolio allocation
-    rarely changes by more than 2–3 percentage points on a normal trading day.
-    The strategy reacts to sustained trends over weeks, not to single-day price moves.
+    Price is smoothed with a **30-day EMA**, mining cost with a **90-day EMA** before the ratio is computed.
+    This limits daily allocation shifts to roughly **2–3 percentage points** regardless of how volatile the raw price is.
 
     ---
     #### What actually drives results — ablation study
-    Each component was removed one at a time and the out-of-sample Sortino ratio measured.
-    Baseline with everything active: **Sortino = 2.443**.
+    Each component was removed one at a time. Baseline out-of-sample Sortino = **2.443**.
 
     | Component removed | Change in Sortino | Takeaway |
     |---|---|---|
-    | Signal EMA smoothing | −0.43 | **Biggest driver by far.** Wrong EMA windows kill most of the edge. |
+    | Signal EMA smoothing | −0.43 | **Biggest driver.** Wrong EMA windows kill most of the edge. |
     | Hash Ribbon filter | −0.34 | **Second biggest.** Without it the strategy holds through miner capitulation crashes. |
-    | Trend filter (360-day EMA) | −0.26 | **Meaningful.** Without it the strategy stays long through prolonged bear markets. |
-    | RSI oversold boost | −0.07 | Small but consistent across folds. Kept. |
-    | 4-mode drawdown engine | −0.02 | Near-zero Sortino impact — but it hard-caps exposure during extreme stress (2018, 2022). Kept for tail risk. |
-    | Volatility scaling | −0.02 | Near-zero Sortino impact — but it keeps annualised vol near the 40% target. Kept for risk management. |
+    | Trend filter (360-day EMA) | −0.26 | **Meaningful.** Without it the strategy stays long through bear markets. |
+    | RSI oversold boost | −0.07 | Small but consistent. Kept. |
+    | 4-mode risk engine | −0.02 | Near-zero Sortino impact — kept for tail risk. |
+    | Volatility scaling | −0.02 | Near-zero Sortino impact — kept to maintain 40% vol target. |
 
     ---
-    #### Indirect risk controls
-    These don't generate trades — they reduce or zero out the allocation when conditions are bad:
+    #### Risk filters (passive)
+    These don’t trade — they force allocation to 0% when conditions are bad:
 
-    - **Hash Ribbon (30/60-day hashrate SMA crossover):** when the 30-day hashrate average drops
-      below the 60-day average, miners are turning off machines because mining is unprofitable.
-      Allocation is cut to 0% until the cross-back. Periods fixed from mining literature; not optimised.
-
-    - **Trend filter (360-day EMA):** if BTC is below its long-term moving average, the strategy
-      treats it as a bear market regime and holds 0% BTC regardless of the ratio.
-      Window fixed from technical analysis literature.
-
-    - **Volatility scaling:** realised portfolio volatility is computed daily. When it exceeds
-      the 40% annualised target, the position is scaled down proportionally.
-      The 40% target was optimised; raw BTC vol typically runs at 60–80%.
-
-    - **RSI oversold boost:** when the 14-day RSI drops below 30, the target allocation
-      gets a ×1.30 multiplier to push harder into oversold conditions.
-      The threshold (30) and multiplier (1.30) were fixed from momentum literature.
+    - **Hash Ribbon:** 30-day hashrate SMA drops below 60-day → 0% BTC until cross-back.
+    - **Trend filter:** BTC below its 360-day EMA → 0% BTC regardless of the ratio.
+    - **Volatility scaling:** realised vol above 40% annualised → position scaled down proportionally.
+    - **RSI oversold boost:** RSI(14) < 30 → target weight ×1.30.
 
     ---
-    #### Direct risk controls — 4-mode drawdown engine
-    Tracks the portfolio's rolling peak-to-trough decline and hard-caps BTC exposure:
+    #### Active risk management — 3-trigger, 4-mode system
+    Wanted to add direct risk management: stop-loss, take-profit, trailing stop. Tested all three —
+    none moved Sortino (ablation: −0.02). They force binary in/out events and trigger on normal pullbacks.
 
-    | Mode | Triggers at | Max BTC | Stays elevated for |
-    |---|---|---|---|
-    | NORMAL | — | 100% | — |
-    | CAUTION | −12% | 75% | 2 days after recovery |
-    | RISK_OFF | −20% | 45% | 3 days after recovery |
-    | EMERGENCY | −35% | 5% | 5 days after recovery |
+    Built instead a system that tracks **3 independent signals** simultaneously. Any one hitting its
+    threshold escalates the mode; **all three must heal** before the mode steps back down:
 
-    Sticky recovery prevents flip-flopping: the mode stays elevated for a few days after the
-    drawdown heals, so it does not immediately re-open a full position into a volatile bounce.
-    Thresholds were optimised in walk-forward validation; recovery windows were fixed.
+    - **Drawdown (DD):** rolling peak-to-trough decline of portfolio value
+    - **Volatility (Vol):** 30-day realised annualised vol
+    - **Value-at-Risk (VaR):** 30-day lookback, 99% confidence (z = 2.33)
 
-    Ablation shows this layer barely changes Sortino (−0.02), but it prevented catastrophic
-    losses in 2018 and 2022 by keeping exposure near-zero for weeks during those crashes.
+    | Mode | DD trigger | Vol trigger | VaR trigger | Max BTC | Recovery thresholds | Sticky days |
+    |---|---|---|---|---|---|---|
+    | CAUTION | ≤ −6% | ≥ 130% ann. | ≥ 4% | **75%** | DD > −9%, Vol < 65%, VaR < 2.5% | 2 |
+    | RISK_OFF | ≤ −36% | ≥ 220% ann. | ≥ 6% | **45%** | DD > −16%, Vol < 85%, VaR < 4% | 3 |
+    | EMERGENCY | ≤ −53% | ≥ 230% ann. | ≥ 9% | **5%** | DD > −28%, Vol < 120%, VaR < 6% | 5 |
+
+    Ablation: −0.02 Sortino. But in 2018 and 2022 it kept exposure near-zero for weeks during the worst crashes.
+    Drawdown thresholds optimised in walk-forward CV; recovery days and VaR window fixed.
 
     ---
-    #### How parameters were chosen
-    - **Optimised by walk-forward cross-validation** (multiple in-sample/out-of-sample folds):
-      EMA windows for price, cost, and signal; trend filter window; RSI oversold threshold;
-      drawdown thresholds; volatility target.
-    - **Fixed from established literature:** RSI period (14 days), hashrate SMA windows (30/60 days),
-      RSI multiplier (1.30), trend filter structure.
-    - **Tested as direct risk managers, then dropped:**
-      stop-loss at −15% (triggered on normal pullbacks, missed the recovery),
-      take-profit at +25% (cut bull-run gains prematurely),
-      trailing stop at −10% (caused whipsaw in high-vol regimes).
-      The 4-mode engine replaced all of these because it adjusts the *exposure level gradually*
-      rather than forcing binary entry/exit events.
+    #### Parameters
+    - **Optimised (walk-forward CV):** EMA windows, drawdown/vol/VaR thresholds, vol target, trend filter window, RSI threshold
+    - **Fixed (literature):** RSI period 14d, hashrate SMAs 30/60d, RSI multiplier 1.30
+    - **Dropped:** stop-loss −15%, take-profit +25%, trailing stop −10% — all triggered on normal pullbacks and missed the recovery
 
     ---
     #### Sentiment signals tested
-    - **RSI (14-day):** kept. Ablation: −0.07 Sortino when removed, small but consistent.
-      The +30% position boost adds a gentle push into oversold conditions (e.g. March 2020).
-    - **Fear and Greed Index:** tested, dropped. Data before 2019 was reconstructed backwards
-      from incomplete records — which inflated backtest results artificially. Not reliable.
-    - **SOPR (Spent Output Profit Ratio):** tested, dropped. Reliable daily data only from ~2020.
-      Without the full training window it could not be validated properly.
+    - **RSI (14-day):** kept — ablation shows −0.07 Sortino when removed; adds a push into oversold conditions.
+    - **Fear & Greed Index:** dropped — pre-2019 data was reconstructed backwards, inflating backtest results.
+    - **SOPR:** dropped — reliable daily data only from ~2020, too little history to validate.
     """)
 st.markdown("---")
 
@@ -719,18 +713,11 @@ st.markdown("---")
 # 1. BTC Price vs Production Cost
 st.markdown("""
 #### Bitcoin Price vs Mining Cost
-The primary signal. Daily mining cost (gray line, raw estimate) is smoothed with a
-**90-day EMA** (red dashed line) — that smoothed value is what goes into the ratio.
-BTC price is smoothed with a **30-day EMA** before the ratio is calculated.
+Primary signal. Raw daily mining cost (gray) smoothed to a **90-day EMA** (red dashed) —
+that EMA is what enters the ratio. BTC price is smoothed with a **30-day EMA**.
+The smoothing limits daily allocation shifts to roughly **2–3 percentage points**.
 
-**Concrete numbers:** an EMA with window N shifts by 2/(N+1) toward the current value each day.
-The 30-day price EMA moves at most ~6.5% per day; the 90-day cost EMA at most ~2.2% per day.
-Even on a day with a large price move, the ratio and therefore the allocation can only shift a
-small fraction — typically 2–3 percentage points. The strategy reacts to trends over weeks,
-not to day-to-day swings.
-
-The orange band is ±10% around the smoothed cost. That is the neutral zone (50–70% BTC allocation).
-Below the band = strategy is increasingly long; above it = increasingly reducing exposure.
+Orange band = ±10% around smoothed cost (neutral zone, 50–70% BTC). Below the band → increasingly long; above it → reducing exposure.
 """)
 
 fig_main = go.Figure()
@@ -798,22 +785,11 @@ fig_main.update_layout(
 st.plotly_chart(fig_main, use_container_width=True)
 
 # 2. Total Portfolio Value
+st.markdown("#### Portfolio Value")
 st.markdown("""
-#### Total Portfolio Value
-Strategy equity curve (green) vs. a simple **buy-and-hold BTC** benchmark (blue dotted line) — 
-buying the same initial dollar amount of BTC on day one and never rebalancing.
+Strategy equity curve (green) vs. buy-and-hold BTC benchmark (blue dotted).
 
-The strategy does not trade in and out of BTC in discrete blocks. Instead, it adjusts the 
-*allocation* continuously: more BTC when the ratio is low (price cheap relative to cost), 
-less or none when the signal deteriorates or a risk control fires. In practice the allocation 
-rarely swings by more than a few percentage points per day because both the signal and the 
-risk engine change gradually.
-
-The typical tradeoff: the strategy **lags the benchmark during strong bull runs** (it is rarely 
-at 100% allocation at the top) but **absorbs significantly less drawdown in bear markets** 
-(filters cut exposure before the worst of the decline). Over a full cycle, reducing peak-to-trough 
-loss from 70%+ to ∼30–40% means a far shorter path back to new highs, which compounds 
-into better risk-adjusted returns even if raw returns are similar.
+The strategy adjusts allocation continuously, not in discrete blocks. It lags the benchmark in strong bull runs (rarely at 100% at the top), but takes significantly less drawdown in bear markets. Cutting peak-to-trough loss from 70%+ to ~30–40% means a much shorter path back to new highs — which compounds into better risk-adjusted returns over a full cycle.
 """)
 
 fig_portfolio = go.Figure()
@@ -1026,9 +1002,9 @@ Rolling peak-to-trough decline of the portfolio value over time. This is the pri
 the risk engine is designed to contain.
 
 The four risk mode thresholds are marked by the drawdown levels they monitor:
-- **CAUTION** activates at −12% → caps BTC exposure at 75%
-- **RISK_OFF** activates at −20% → caps BTC exposure at 45%
-- **EMERGENCY** activates at −35% → caps BTC exposure at 5%
+- **CAUTION** activates at −6% → caps BTC exposure at 75%
+- **RISK_OFF** activates at −36% → caps BTC exposure at 45%
+- **EMERGENCY** activates at −53% → caps BTC exposure at 5%
 
 A smaller max drawdown relative to buy-and-hold means a shorter recovery path back to a new
 high-water mark — which directly improves long-run compounded performance.
