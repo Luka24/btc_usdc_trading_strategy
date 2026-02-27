@@ -613,11 +613,6 @@ st.markdown("""
 **Portfolio value** = BTC position + USDC position. The backtest opens with up to 2 BTC (remaining capital in USDC at the first day's price). Changing the date range reruns the backtest — data is cached for 1 hour.
 """)
 
-st.markdown("""
-<div style="border:2px solid #f0a500; border-radius:6px; padding:8px 14px; background:#fffbe6; color:#333; margin-bottom:6px">
-⚠️ <strong>Read before interpreting results</strong> — expand the section below for signal logic, ablation results, and risk engine details.
-</div>
-""", unsafe_allow_html=True)
 with st.expander("How this strategy works", expanded=True):
     st.markdown(
         '''<div style="border-left:3px solid #e07b00;background:#fff9f2;padding:7px 14px;margin-bottom:10px;font-size:14px;color:#1c1c1c;line-height:1.55;">
