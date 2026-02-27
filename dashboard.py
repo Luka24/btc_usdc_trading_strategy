@@ -49,7 +49,6 @@ if os.path.exists(_bp_path):
     _cfg.PortfolioConfig.VOL_TARGET          = _ga['VOL_TARGET']
     _cfg.RiskManagementConfig.DD_THRESHOLDS.update(_gb['DD_THRESHOLDS'])
     _cfg.RiskManagementConfig.VOL_THRESHOLDS.update(_gb['VOL_THRESHOLDS'])
-    _cfg.PortfolioConfig.HALVING_BEAR_MULT    = _gc['HALVING_BEAR_MULT']
     _cfg.PortfolioConfig.HASH_RIBBON_CAP_MULT = _gc['HASH_RIBBON_CAP_MULT']
     _BEST_PARAMS_LOADED = True
     _BEST_PARAMS_SORTINO = _bp.get('final_sortino', None)

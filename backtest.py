@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from collections import deque
 from datetime import datetime
 from enum import Enum
 
@@ -7,7 +8,6 @@ from production_cost import ProductionCostSeries, get_block_reward_for_date
 from portfolio import PortfolioManager
 from risk_manager import RiskManager
 from config import SignalConfig, PortfolioConfig
-from collections import deque
 
 
 class Signal(Enum):
@@ -76,7 +76,7 @@ class BacktestEngine:
         self.backtest_data["hr_fast"] = hr.rolling(fast, min_periods=fast).mean()
         self.backtest_data["hr_slow"] = hr.rolling(slow, min_periods=slow).mean()
 
-    def add_daily_data(self, date, btc_price, hashrate_eh_per_s, mvrv_z: float = 0.0,
+    def add_daily_data(self, date, btc_price, hashrate_eh_per_s,
                        _skip_recompute: bool = False):
         block_reward = get_block_reward_for_date(date)
         cost_data = self.cost_series.add_daily_data(date, hashrate_eh_per_s)
@@ -107,7 +107,6 @@ class BacktestEngine:
             "trade_size_weight": 0.0,
             "trend_ema": float(btc_price),
             "rsi": 50.0,
-            "mvrv_z": float(mvrv_z),
         }
 
         self.backtest_data = pd.concat([self.backtest_data, pd.DataFrame([row])], ignore_index=True)
@@ -116,12 +115,10 @@ class BacktestEngine:
 
     def add_from_dataframe(self, df):
         """Batch-load a DataFrame, O(n) – builds row list first, concat once."""
-        mvrv_col_exists = 'mvrv_z' in df.columns
         rows = []
         for _, row in df.iterrows():
             block_reward = get_block_reward_for_date(row["date"])
             cost_data = self.cost_series.add_daily_data(row["date"], row["hashrate_eh_per_s"])
-            mvrv_z = float(row["mvrv_z"]) if mvrv_col_exists else 0.0
             rows.append({
                 "date": pd.to_datetime(row["date"]),
                 "btc_price": float(row["btc_price"]),
@@ -148,7 +145,6 @@ class BacktestEngine:
                 "trade_size_weight": 0.0,
                 "trend_ema": float(row["btc_price"]),
                 "rsi": 50.0,
-                "mvrv_z": mvrv_z,
             })
         self.backtest_data = pd.DataFrame(rows)
         # Single O(n) EMA pass for the full dataset
@@ -169,65 +165,28 @@ class BacktestEngine:
         self.portfolio_manager.initialize_holdings(first_price, initial_btc_quantity)
 
         prev_nav = None
-        prev_price = None
+        prev_price: float | None = None
         _btc_returns: deque = deque(maxlen=PortfolioConfig.VOL_SCALING_WINDOW)
-
-        # Halving cycle overlay: pre-compute timestamps once (outside loop)
-        _halvings_ts = [
-            pd.Timestamp("2012-11-28"), pd.Timestamp("2016-07-09"),
-            pd.Timestamp("2020-05-11"), pd.Timestamp("2024-04-19"),
-        ]
 
         for idx, row in self.backtest_data.iterrows():
             date = row["date"]
             price = float(row["btc_price"])
+
+            # track daily returns for vol scaling
+            if prev_price is not None:
+                _btc_returns.append((price - prev_price) / prev_price)
+            prev_price = price
             ratio_ema = float(row["signal_ratio"])
 
             nav_before = self.get_portfolio_value(price)
             daily_return = 0.0 if prev_nav is None or prev_nav == 0 else (nav_before - prev_nav) / prev_nav
 
-            # ── Volatility targeting ─────────────────────────────────────────
-            if prev_price is not None:
-                _btc_returns.append((price - prev_price) / prev_price)
-            prev_price = price
-
-            vol_scalar = 1.0
-            if PortfolioConfig.VOL_TARGET > 0 and len(_btc_returns) >= 5:
-                realized_vol = float(np.std(_btc_returns, ddof=0)) * np.sqrt(252)
-                if realized_vol > 0:
-                    raw_scalar = PortfolioConfig.VOL_TARGET / realized_vol
-                    vol_scalar = float(np.clip(raw_scalar,
-                                               PortfolioConfig.VOL_SCALE_MIN,
-                                               PortfolioConfig.VOL_SCALE_MAX))
-            w_signal = float(row["signal_weight"]) * vol_scalar
-            # ─────────────────────────────────────────────────────────────────
+            w_signal = float(row["signal_weight"])
 
             # ── RSI overlay ──────────────────────────────────────────────────
             rsi = float(row["rsi"])
-            if rsi < PortfolioConfig.RSI_OVERSOLD:
-                rsi_mult = PortfolioConfig.RSI_BOOST       # oversold → buy more
-            elif rsi > PortfolioConfig.RSI_OVERBOUGHT:
-                rsi_mult = PortfolioConfig.RSI_SUPPRESS    # overbought → hold less
-            else:
-                rsi_mult = 1.0
+            rsi_mult = PortfolioConfig.RSI_BOOST if rsi < PortfolioConfig.RSI_OVERSOLD else 1.0
             w_signal = float(np.clip(w_signal * rsi_mult, 0.0, 1.0))
-            # ─────────────────────────────────────────────────────────────────
-
-            # ── Monthly Seasonality overlay ──────────────────────────────────
-            if PortfolioConfig.SEASONAL_ENABLED:
-                month = row["date"].month if hasattr(row["date"], "month") else pd.to_datetime(row["date"]).month
-                seasonal_mult = PortfolioConfig.SEASONAL_MULTIPLIERS.get(month, 1.0)
-                w_signal = float(np.clip(w_signal * seasonal_mult, 0.0, 1.0))
-            # ─────────────────────────────────────────────────────────────────
-
-            # ── Halving Cycle overlay (early_bear phase = days 548–912 post-halving) ──
-            if PortfolioConfig.HALVING_ENABLED:
-                _date_ts = pd.Timestamp(date)
-                _past_halvings = [h for h in _halvings_ts if h <= _date_ts]
-                if _past_halvings:
-                    _days_since = (_date_ts - _past_halvings[-1]).days
-                    if 548 <= _days_since < 912:   # early_bear: historically -66% ann
-                        w_signal = float(np.clip(w_signal * PortfolioConfig.HALVING_BEAR_MULT, 0.0, 1.0))
             # ─────────────────────────────────────────────────────────────────
 
             # ── Hash Ribbon overlay (miner capitulation = hr_fast < hr_slow) ──
@@ -238,20 +197,17 @@ class BacktestEngine:
                     w_signal = float(np.clip(w_signal * PortfolioConfig.HASH_RIBBON_CAP_MULT, 0.0, 1.0))
             # ─────────────────────────────────────────────────────────────────
 
-            # ── MVRV Z-score overlay (on-chain valuation cycle) ─────────────
-            if PortfolioConfig.MVRV_ENABLED:
-                mvrv_z = float(row["mvrv_z"])
-                if mvrv_z < PortfolioConfig.MVRV_OVERSOLD_Z:
-                    mvrv_mult = PortfolioConfig.MVRV_BOOST           # undervalued → buy more
-                elif mvrv_z > PortfolioConfig.MVRV_EXTREME_Z:
-                    mvrv_mult = PortfolioConfig.MVRV_EXTREME_FACTOR  # cycle top → severely cut
-                elif mvrv_z > PortfolioConfig.MVRV_RISK_OFF_Z:
-                    mvrv_mult = PortfolioConfig.MVRV_RISK_OFF_FACTOR # late-cycle → reduce
-                elif mvrv_z > PortfolioConfig.MVRV_CAUTION_Z:
-                    mvrv_mult = PortfolioConfig.MVRV_CAUTION_FACTOR  # caution zone → trim
+            # ── Vol scaling (target annualised volatility) ─────────────────
+            if PortfolioConfig.VOL_TARGET > 0 and len(_btc_returns) >= 5:
+                realized_vol = float(np.std(_btc_returns, ddof=0)) * np.sqrt(252)
+                if realized_vol > 0:
+                    raw_scalar = PortfolioConfig.VOL_TARGET / realized_vol
+                    vol_scalar = float(np.clip(raw_scalar, PortfolioConfig.VOL_SCALE_MIN, PortfolioConfig.VOL_SCALE_MAX))
                 else:
-                    mvrv_mult = 1.0                                  # accumulation → neutral
-                w_signal = float(np.clip(w_signal * mvrv_mult, 0.0, 1.0))
+                    vol_scalar = 1.0
+            else:
+                vol_scalar = 1.0
+            w_signal = float(np.clip(w_signal * vol_scalar, 0.0, 1.0))
             # ─────────────────────────────────────────────────────────────────
 
             # ── Trend filter (200-day EMA regime) ───────────────────────────
@@ -314,7 +270,6 @@ class BacktestEngine:
             self.backtest_data.at[idx, "recovery_counter"] = risk["recovery_counter"]
             self.backtest_data.at[idx, "trade_executed"] = trade_executed
             self.backtest_data.at[idx, "trade_size_weight"] = trade_size_weight
-            # mvrv_z is already stored at add_daily_data time; no overwrite needed
 
         return self.portfolio_manager.get_portfolio_dataframe()
 

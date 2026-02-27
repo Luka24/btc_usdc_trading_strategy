@@ -80,10 +80,8 @@ def _snapshot_defaults() -> None:
     }
     _DEFAULT_PORTFOLIO = {
         "TREND_FILTER_WINDOW": cfg.PortfolioConfig.TREND_FILTER_WINDOW,
-        "VOL_TARGET": cfg.PortfolioConfig.VOL_TARGET,
         "RSI_OVERSOLD": cfg.PortfolioConfig.RSI_OVERSOLD,
-        "HALVING_BEAR_MULT": cfg.PortfolioConfig.HALVING_BEAR_MULT,
-        "SEASONAL_MULTIPLIERS": copy.deepcopy(cfg.PortfolioConfig.SEASONAL_MULTIPLIERS),
+        "VOL_TARGET": cfg.PortfolioConfig.VOL_TARGET,
         "HASH_RIBBON_CAP_MULT": cfg.PortfolioConfig.HASH_RIBBON_CAP_MULT,
     }
     _DEFAULT_RISK = {
@@ -174,7 +172,6 @@ GROUP_B_DEFAULTS: dict[str, Any] = {
 }
 
 GROUP_C_DEFAULTS: dict[str, Any] = {
-    "HALVING_BEAR_MULT": cfg.PortfolioConfig.HALVING_BEAR_MULT,
     "HASH_RIBBON_CAP_MULT": cfg.PortfolioConfig.HASH_RIBBON_CAP_MULT,
 }
 
@@ -186,7 +183,7 @@ def _suggest_group_a(trial) -> dict[str, Any]:
         "SIGNAL_EMA_WINDOW": trial.suggest_int("signal_ema_window", 3, 30),
         "TREND_FILTER_WINDOW": trial.suggest_int("trend_filter_window", 100, 400, step=10),
         "RSI_OVERSOLD": trial.suggest_int("rsi_oversold", 20, 40),
-        "VOL_TARGET": trial.suggest_float("vol_target", 0.20, 0.80, step=0.02),
+        "VOL_TARGET": trial.suggest_float("vol_target", 0.20, 0.80, step=0.05),
     }
 
 
@@ -232,10 +229,7 @@ def _suggest_group_b(trial) -> dict[str, Any]:
 
 
 def _suggest_group_c(trial) -> dict[str, Any]:
-    # August seasonal multiplier is NOT optimised — only 5 data points (2020-2024),
-    # too few to distinguish signal from noise. Kept at config default (0.70).
     return {
-        "HALVING_BEAR_MULT": trial.suggest_float("halving_bear_mult", 0.00, 0.50, step=0.05),
         "HASH_RIBBON_CAP_MULT": trial.suggest_float("hash_ribbon_cap_mult", 0.00, 0.40, step=0.05),
     }
 
@@ -369,7 +363,7 @@ def run_phase_c(
     remaining = max(0, n_trials - len(study.trials))
 
     log.info("Phase C — overlays  (%d trials, %d already done)", n_trials, n_trials - remaining)
-    log.info("  params: HALVING_BEAR_MULT, HASH_RIBBON_CAP_MULT")
+    log.info("  params: HASH_RIBBON_CAP_MULT")
 
     a_fixed = copy.deepcopy(best_a)
     b_fixed = copy.deepcopy(best_b)
@@ -387,7 +381,6 @@ def run_phase_c(
 
     p = best.params
     best_c: dict[str, Any] = {
-        "HALVING_BEAR_MULT": p["halving_bear_mult"],
         "HASH_RIBBON_CAP_MULT": p["hash_ribbon_cap_mult"],
     }
     _log_params("Phase C best", best_c, study.best_value)

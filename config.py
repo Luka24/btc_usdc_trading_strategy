@@ -107,12 +107,6 @@ class PortfolioConfig:
     MAX_DAILY_WEIGHT_CHANGE = 0.10
     MIN_REBALANCE_THRESHOLD = 0.04
 
-    # Volatility targeting: scale position so annualised port vol ≈ VOL_TARGET
-    VOL_TARGET = 0.48
-    VOL_SCALING_WINDOW = 15
-    VOL_SCALE_MIN = 0.20
-    VOL_SCALE_MAX = 1.00
-
     # Trend filter: full exit when price < long-term EMA
     TREND_FILTER_WINDOW = 250
     TREND_BEAR_CAP = 0.00
@@ -120,33 +114,14 @@ class PortfolioConfig:
     # RSI overlay: boost on oversold, suppress disabled (hurts Sharpe)
     RSI_WINDOW = 14
     RSI_OVERSOLD = 30
-    RSI_OVERBOUGHT = 100   # effectively disabled
     RSI_BOOST = 1.30
-    RSI_SUPPRESS = 1.00
 
-    # MVRV Z-score overlay (on-chain cycle signal)
-    # Disabled: no Sharpe improvement vs baseline in 2022-2026 testing.
-    MVRV_ENABLED = False
-    MVRV_Z_WINDOW = 730
-    MVRV_OVERSOLD_Z = -0.5
-    MVRV_CAUTION_Z = 2.0
-    MVRV_RISK_OFF_Z = 4.5
-    MVRV_EXTREME_Z = 6.5
-    MVRV_BOOST = 1.15
-    MVRV_CAUTION_FACTOR = 0.70
-    MVRV_RISK_OFF_FACTOR = 0.55
-    MVRV_EXTREME_FACTOR = 0.25
-
-    # Seasonal overlay (only statistically robust months; June removed: no edge)
-    SEASONAL_ENABLED = True
-    SEASONAL_MULTIPLIERS = {
-        8: 0.70,   # August: 18% win rate over 11 years (9/11 negative)
-    }
-
-    # Halving cycle overlay: reduce exposure ~18 months post-halving (bear phase)
-    # Grid-searched: 0.10 gives best OOS Sharpe (+0.118 vs baseline)
-    HALVING_ENABLED = True
-    HALVING_BEAR_MULT = 0.10
+    # Vol scaling: shrink/grow position to target annualised volatility
+    # Walk-forward validated: protects 2022-style high-vol bear drawdowns
+    VOL_TARGET = 0.40          # target annualised vol (0 = disabled)
+    VOL_SCALING_WINDOW = 15    # lookback days for realised vol
+    VOL_SCALE_MIN = 0.20       # floor scalar (never go below 20% exposure)
+    VOL_SCALE_MAX = 1.00       # ceiling scalar (never lever up)
 
     # Hash Ribbon: miner capitulation (fast SMA < slow SMA → exit)
     # Walk-forward validated: OOS Sharpe +0.266
