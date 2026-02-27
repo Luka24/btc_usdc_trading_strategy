@@ -43,7 +43,7 @@ h2 { color: #3b4637; }
 
     st.title("Strategy & Methodology - Complete Documentation")
 
-    st.caption("Most of this page is already up to date. Full update in progress — will be completed by end of February 27, 2026.")
+    st.markdown('<p style="font-size:18px;color:#555;">Most of this page is already up to date. Full update in progress — will be completed by end of February 27, 2026.</p>', unsafe_allow_html=True)
 
     st.markdown(
         """
