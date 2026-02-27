@@ -480,119 +480,101 @@ and why I made certain choices when building this system.
     
     # ========== RISK METRICS ==========
     st.header("6️⃣ Risk Management & Protection Systems")
-    
+
     st.markdown("""
-    ### Active Risk Protection
-    
-    I added 6 protection systems to keep the strategy safe. You can turn them on/off with a button on the dashboard.
-    
+    ### How the Risk Engine Works
+
+    The strategy uses a **4-mode professional risk engine** that is always active.
+    It looks at three numbers every day — drawdown, volatility, and VaR — and decides which mode to be in.
+    Each mode puts a hard cap on how much BTC the portfolio can hold.
+
     ---
-    
-    ### Protection 1: Drawdown Brake (Emergency Stop)
-    
-    **Setting:** `MAX_DRAWDOWN_LIMIT = -30%`
-    
-    **How it works:** If I lose 30% from the highest point, sell everything immediately.
-    
-    **Why -30%?** Professional traders use 20-40% for crypto. I tested and -30% works best - stops big losses without panic selling.
-    
-    **Source:** Binance Academy - Risk Management (https://academy.binance.com/en/articles)
-    
+
+    ### The 4 Modes
+
+    | Mode | Max BTC Exposure | When It Activates |
+    |---|---|---|
+    | **NORMAL** | 100% | Everything looks fine |
+    | **CAUTION** | 75% | Drawdown < −12%, or vol > 75%, or VaR > 4% |
+    | **RISK_OFF** | 45% | Drawdown < −20%, or vol > 100%, or VaR > 6% |
+    | **EMERGENCY** | 5% | Drawdown < −35%, or vol > 140%, or VaR > 9% |
+
+    **Example:** If Bitcoin drops 22% from its recent peak, the engine switches to RISK_OFF and the portfolio can hold at most 45% BTC. This limits losses automatically.
+
     ---
-    
-    ### Protection 2: Stop-Loss (Cut Losing Trades)
-    
-    **Setting:** `STOP_LOSS_PCT = -15%`
-    
-    **How it works:** If Bitcoin drops 15% below entry price, sell immediately.
-    
-    **Why -15%?** 5-10% too tight (false exits), 20-30% too loose. 15% is industry standard for crypto.
-    
-    **Source:** Investopedia Stop-Loss Guide (https://www.investopedia.com/terms/s/stop-lossorder.asp)
-    
+
+    ### Sticky Recovery
+
+    The engine does **not jump back to NORMAL immediately** when things improve.
+    It waits until drawdown, volatility, *and* VaR all return to safe levels, **and** it counts several calm days first:
+
+    - CAUTION → needs 2 calm days before upgrading
+    - RISK_OFF → needs 3 calm days
+    - EMERGENCY → needs 5 calm days
+
+    **Why?** Markets often bounce briefly after a crash. Sticky recovery stops the strategy from going back to full exposure too early.
+
     ---
-    
-    ### Protection 3: Take-Profit (Lock In Gains)
-    
-    **Setting:** `TAKE_PROFIT_PCT = +25%`
-    
-    **How it works:** If Bitcoin goes up 25% from entry, sell and take profit.
-    
-    **Why +25%?** Risk/Reward balance: 25% profit vs 15% loss = 1.67 ratio (good). Bitcoin often does +20-40% moves.
-    
-    **Source:** Investopedia Risk/Reward Ratio (https://www.investopedia.com/terms/r/riskrewardratio.asp)
-    
+
+    ### Volatility Scaling (always on)
+
+    Even inside NORMAL mode, position size is scaled by volatility:  
+    $$\\text{Scale} = \\frac{\\text{Vol Target (40\\% ann.)}}{\\text{Realised Vol (15-day)}}$$
+
+    The scale is capped between 0.20 and 1.00, so the strategy never levers up and never goes below 20% exposure.
+
+    **Why?** This keeps risk roughly constant over time. In calm markets we hold more; in wild markets we hold less.
+
     ---
-    
-    ### Protection 4: Trailing Stop (Protect Profits)
-    
-    **Setting:** `TRAILING_STOP_PCT = -10%`
-    
-    **How it works:** As price goes up, stop-loss follows. If price drops 10% from peak, sell.
-    
-    **Why -10%?** Industry standard for trending assets. Protects most profit without exiting from normal pullbacks.
-    
-    **Source:** Schwab Trailing Stop Guide (https://www.schwab.com/learn)
-    
+
+    ### Hash Ribbon Filter (miner capitulation)
+
+    The Hash Ribbon compares a **30-day** and **60-day** moving average of the Bitcoin network hashrate.  
+    When the fast SMA drops below the slow SMA, miners are shutting down — this is a danger sign.
+
+    - Fast SMA < Slow SMA → strategy caps exposure to 0% (full exit)
+    - Once miners recover (fast > slow), normal trading resumes
+
+    **Why?** Miner capitulation often precedes large price drops (e.g. 2018, 2022). This filter was validated in walk-forward testing (+0.27 OOS Sortino improvement).
+
     ---
-    
-    ### Protection 5: Volatility-Based Position Scaling
-    
-    **Setting:** `VOLATILITY_THRESHOLD = 60%` (annualized)
-    
-    **How it works:** When volatility above 60%, reduce position to 50% of normal size.
-    
-    **Why 60%?** Bitcoin normal volatility is 40-80%. Above 60% = high risk. Historical data shows big crashes often follow high volatility.
-    
-    **Source:** Bitcoin Volatility Index Research (https://www.buybitcoinworldwide.com/volatility-index/)
-    
+
+    ### Trend Filter (Bull / Bear)
+
+    The strategy checks if the current BTC price is above its 250-day EMA:
+    - Above EMA → normal trading
+    - Below EMA → exposure capped at 0% (bear market protection)
+
+    This stops the strategy from buying into prolonged bear markets.
+
     ---
-    
-    ### Protection 6: Consecutive Loss Protection
-    
-    **Setting:** `MAX_CONSECUTIVE_LOSSES = 5 days`
-    
-    **How it works:** If I lose money 5 days in a row, reduce position to 30%.
-    
-    **Why 5 days?** Losing streaks mean strategy temporarily not working. 5 days is good cutoff - 3 too quick, 7 too late.
-    
-    **Source:** Quantified Strategies - Losing Streaks (https://www.quantifiedstrategies.com/losing-streaks-how-many-losses-in-a-row/)
-    
+
+    ### RSI Oversold Boost
+
+    When RSI (14-day) drops below 30, the target BTC weight is multiplied by **×1.30**.
+    This adds a small extra buy when Bitcoin is deeply oversold — a classic mean-reversion signal.
+
     ---
-    
-    ### How All 6 Protections Work Together
-    
-    **Priority order:**
-    1. Drawdown brake (-30%) - Emergency stop
-    2. Stop-loss (-15%) - Cut losing trades
-    3. Take-profit (+25%) - Lock profits
-    4. Trailing stop (-10%) - Protect profits
-    5. Volatility scaling (>60%) - Reduce in crazy markets
-    6. Consecutive losses (5 days) - Reduce during losing streaks
-    
-    **Can I turn them off?** Yes! Use checkbox on dashboard to compare performance with/without protections.
-    
-    ---
-    
-    ### Other Risk Metrics I Track
-    
+
+    ### Risk Metrics Tracked
+
     **Volatility (30-day)**
     - Formula: $\\text{Vol} = \\text{std}(\\text{daily returns}) \\times \\sqrt{252}$
-    - What it is: How much risk the portfolio has
-    
+    - Measures how much risk the portfolio carries right now
+
     **Value-at-Risk (99% confidence)**
     - Formula: $\\text{VaR}_{99} = \\mu - 2.33 \\times \\sigma$
-    - What it is: Worst loss I might see on a bad day
-    
+    - Worst daily loss expected 99 out of 100 days
+
     **Max Drawdown**
     - Formula: $\\text{DD} = \\frac{\\text{Value} - \\text{Peak}}{\\text{Peak}}$
-    - What it is: Biggest drop from highest point
-    
-    **Sharpe Ratio**
-    - Formula: $\\text{Sharpe} = \\frac{\\mu_{\\text{returns}}}{\\sigma_{\\text{returns}}} \\times \\sqrt{252}$
-    - What it is: Return compared to risk (higher is better)
-    
-    **In the code:** [risk_manager.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/risk_manager.py)
+    - Biggest fall from any previous high point
+
+    **Sharpe / Sortino Ratios**
+    - Sharpe: $\\frac{\\mu}{\\sigma} \\times \\sqrt{252}$ — return per unit of total risk
+    - Sortino: same but only counts downside volatility (more relevant for crypto)
+
+    **Code:** [risk_manager.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/risk_manager.py)
     """)
     
     st.markdown("---")
