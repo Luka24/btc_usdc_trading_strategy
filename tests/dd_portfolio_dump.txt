@@ -1,0 +1,13 @@
+  [−12%] at 20400: 'eak) / running peak × 100\\n"\n            "The risk engine activates: CAUTION at −12%, RISK_OFF at −20%, EMERGENCY at −35%."\n        )\n    )\n\nwith col5:\n    st.m'
+  [−12%] at 37170: 'olds are marked by the drawdown levels they monitor:\n- **CAUTION** activates at −12% → caps BTC exposure at 75%\n- **RISK_OFF** activates at −20% → caps BTC expo'
+  [−20%] at 20418: 'k × 100\\n"\n            "The risk engine activates: CAUTION at −12%, RISK_OFF at −20%, EMERGENCY at −35%."\n        )\n    )\n\nwith col5:\n    st.metric(\n        "Vo'
+  [−20%] at 37230: 'TION** activates at −12% → caps BTC exposure at 75%\n- **RISK_OFF** activates at −20% → caps BTC exposure at 45%\n- **EMERGENCY** activates at −35% → caps BTC exp'
+  [−35%] at 20437: '    "The risk engine activates: CAUTION at −12%, RISK_OFF at −20%, EMERGENCY at −35%."\n        )\n    )\n\nwith col5:\n    st.metric(\n        "Volatility (Ann.)",\n '
+  [−35%] at 37291: 'OFF** activates at −20% → caps BTC exposure at 45%\n- **EMERGENCY** activates at −35% → caps BTC exposure at 5%\n\nA smaller max drawdown relative to buy-and-hold '
+  [−6%] at 26244: ' thresholds | Sticky days |\n    |---|---|---|---|---|---|---|\n    | CAUTION | ≤ −6% | ≥ 130% ann. | ≥ 4% | **75%** | DD > −9%, Vol < 65%, VaR < 2.5% | 2 |\n    |'
+  [−36%] at 26338: 'nn. | ≥ 4% | **75%** | DD > −9%, Vol < 65%, VaR < 2.5% | 2 |\n    | RISK_OFF | ≤ −36% | ≥ 220% ann. | ≥ 6% | **45%** | DD > −16%, Vol < 85%, VaR < 4% | 3 |\n    |'
+  [−53%] at 26433: 'nn. | ≥ 6% | **45%** | DD > −16%, Vol < 85%, VaR < 4% | 3 |\n    | EMERGENCY | ≤ −53% | ≥ 230% ann. | ≥ 9% | **5%** | DD > −28%, Vol < 120%, VaR < 6% | 5 |\n\n    '
+
+
+=== Area around portfolio chart ===
+'dth=0),\n    name=\'±10% Zone\',\n    hoverinfo=\'skip\'\n))\n\nfig_main.update_layout(\n    title="BTC Price vs Mining Cost",\n    xaxis_title="Date",\n    yaxis_title="USD",\n    template="plotly_white",\n    height=500,\n    hovermode=\'x unified\',\n    legend=dict(x=0.01, y=0.99, bgcolor=\'rgba(255,255,255,0.8)\')\n)\n\nst.plotly_chart(fig_main, use_container_width=True)\n\n# 2. Total Portfolio Value\nst.markdown("""\nStrategy equity curve (green) vs. buy-and-hold BTC benchmark (blue dotted).\n\nThe strategy adjusts al'

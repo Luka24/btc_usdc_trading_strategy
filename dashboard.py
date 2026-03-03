@@ -326,8 +326,8 @@ st.markdown(
         <div style="margin-top:6px; color:#3C4858; font-size:15px;">
             A systematic strategy that sizes BTC exposure based on how far the price deviates from its
             estimated production cost, with multiple independent risk filters on top.
-            <strong>All parameters were optimised for Sortino ratio</strong> using walk-forward cross-validation
-            (out-of-sample Sortino = 2.443). Full methodology in the Strategy page.
+            <strong>All parameters were optimised for Sortino ratio</strong> using walk-forward cross-validation.
+            Full methodology in the Strategy page.
         </div>
     </div>
     """,

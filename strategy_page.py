@@ -1,4 +1,5 @@
-import streamlit as st
+﻿import streamlit as st
+import pandas as pd
 
 
 def render_strategy_page() -> None:
@@ -41,613 +42,797 @@ h2 { color: #3b4637; }
                 st.session_state["show_strategy_page"] = False
                 st.rerun()
 
-    st.title("Strategy & Methodology - Complete Documentation")
-
-    st.markdown('<p style="font-size:18px;color:#555;">Most of this page is already up to date. Full update in progress — will be completed by end of February 27, 2026.</p>', unsafe_allow_html=True)
+    st.title("Strategy & Methodology — Full Documentation")
 
     st.markdown(
-        """
-This page explains how the trading strategy works. You can read about the main ideas, where I got the data, 
-and why I made certain choices when building this system.
-"""
+        "This page explains how the trading strategy works: the main idea, where the data comes from, "
+        "how each parameter was chosen, and what the testing results show."
     )
 
     st.markdown("---")
 
     # ========== HOW I STARTED ==========
-    st.header("0️⃣ How I Started the Project")
+    st.header("0️⃣ How I Started")
 
     st.markdown("""
-    ### How I Started the Task
-    
-    At the start, this task looked very interesting to me. I always liked to analyze numbers.
-    
-    **First step: research**
-    - I asked: what is the main point and what is the problem?
-    - I already knew the basic idea of Bitcoin.
-    - I read some pages on Google and watched a few YouTube videos.
-    - I also asked Gemini for help.
-    
-    **Second step: build a simple base**
-    - I first made a static report with all the main parts.
-    - I used the theory I read before.
-    - I used AI tools to help write code because the project is big and time was short.
-    - I always checked the AI output and fixed it if it did not make sense.
-    
-    **Third step: add more features**
-    - I saw I could make it more complex.
-    - I added live data with APIs.
-    - I built a dynamic Streamlit dashboard.
-    
+    ### First Steps
+
+    I started by asking a basic question: can you build a rule-based system that knows when Bitcoin
+    is cheap or expensive — not based on price charts alone, but on something more fundamental?
+
+    **Research phase**
+    - I read about Bitcoin mining economics: how hashrate, block rewards, and electricity costs
+      connect to miner profitability.
+    - Key readings: Charles Edwards's "Bitcoin Energy Value" paper (Capriole Investments),
+      JPMorgan's annual Bitcoin mining cost reports, and a CESifo academic paper on mining economics.
+    - I also used Cambridge's Bitcoin Electricity Consumption Index (CBECI) for energy consumption data.
+
+    **Build phase**
+    - I first built a static version with hardcoded numbers to check the core idea made sense.
+    - Then I added live APIs (CoinGecko for price, Blockchain.com for hashrate).
+    - Finally I built the Streamlit dashboard so the strategy runs and updates automatically.
+
+    **What I used AI tools for**
+    - Code boilerplate, debugging, and writing the Streamlit layout faster.
+    - I always checked the output and corrected errors — especially the numbers, which AI often gets wrong.
+
     **What I learned**
-    - I learned a lot about trading theory.
-    - I also learned a lot about programming.
-    
-    **Ideas for the future**
-    - I have many ideas to improve the project, as I said in the video I included.
+    - Mining economics create real price anchors. When miners lose money, fewer coins reach the market.
+      When they profit heavily, more capital enters mining and selling pressure grows.
+    - Simple rule-based systems often generalise better than complex ML in cryptocurrency markets.
     """)
 
     st.markdown("---")
 
     # ========== STRATEGY OVERVIEW ==========
-    st.header("1️⃣ Strategy Overview & Theoretical Foundation")
-    
+    st.header("1️⃣ Strategy Overview & Core Idea")
+
     st.markdown("""
-    ### Core Concept: Mean-Reversion Based on Production Cost
-    
-    This strategy uses Bitcoin's **production cost** (how much it costs to mine) as a reference point. 
-    
-    **Main idea:** When Bitcoin's price goes too far away from the mining cost, it usually comes back. We can use this to know when to buy or sell.
-    
+    ### Mean-Reversion Based on Production Cost
+
+    The strategy belongs to the **mean-reversion** family: it assumes that when Bitcoin's price moves
+    far from its "fair value", it tends to come back over time. Instead of using a statistical average
+    as the anchor, I use the **all-in production cost** — what it actually costs miners to produce one
+    Bitcoin on the network.
+
     ---
-    
-    ### Where I Got My Ideas
-    
-    I read many sources before building this. Here are the main ones:
-    
-    **1. Charles Edwards - Capriole Investments: "Bitcoin Energy Value"**
-    - **Link:** https://capriole.io/
-    - **What I learned:** Production cost works like a floor when prices are falling and a ceiling when prices get too high
-    - **How I used it:** This helped me decide the buy and sell thresholds
-    
-    **2. JPMorgan Bitcoin Mining Analysis (2021-2024)**
-    - **Link:** https://www.jpmorgan.com/insights/research
-    - **What I learned:** Mining costs and Bitcoin price are strongly connected
-    - **How I used it:** This made me more confident that production cost is a good reference point
-    
-    **3. CESifo Working Paper: "The Economics of Bitcoin Mining"**
-    - **Link:** https://www.cesifo.org/DocDL/cesifo1_wp10145.pdf
-    - **What I learned:** Academic research shows mining costs create natural price limits
-    - **How I used it:** Gave me the economic reason for using mean reversion
-    
-    **4. Cambridge Centre for Alternative Finance**
-    - **Link:** https://ccaf.io/cbnsi/cbeci
-    - **What I used:** Their data on how much electricity Bitcoin mining uses
-    
-    **5. Visual Capitalist Mining Cost Research**
-    - **Link:** https://www.visualcapitalist.com/
-    - **What I used:** Historical electricity prices and how efficient miners were over time
-    
+
+    ### Economic Logic
+
+    **Why production cost works as an anchor:**
+
+    1. **Below cost → miner losses.** Unprofitable miners shut machines off. Less hashrate means fewer new coins produced and less selling pressure. Price tends to recover.
+
+    2. **Far above cost → new capital enters.** High profits attract new mining farms. More coins produced increases selling pressure that pulls price back toward cost.
+
+    3. **Market psychology.** Institutional traders use mining cost as a valuation floor and step in when price drops near it.
+
+    Academic reference: [CESifo Working Paper — Economics of Bitcoin Mining](https://www.cesifo.org/DocDL/cesifo1_wp10145.pdf)
+
     ---
-    
-    ### Why This Works
-    
-    **Economic reasons:**
-    1. **When price is too low:** Miners lose money and stop mining → less Bitcoin sold → price goes up
-    2. **When price is too high:** More people start mining → more Bitcoin sold → price goes down
-    3. **Money flow:** When mining is profitable, more money comes in. When it's not, money leaves.
-    
-    **Psychology:**
-    - People think of production cost as the "fair price"
-    - When the price moves too far away from this, traders start buying or selling to bring it back
-    
+
+    ### The Core Signal: Price / Cost Ratio
+
+    Every day the strategy calculates:
+
+    $$R = \\frac{\\text{BTC Price (28-day EMA)}}{\\text{Production Cost (46-day EMA)}}$$
+
+    **EMA (Exponential Moving Average):** a weighted average where recent values count more than older ones. A 28-day EMA gives roughly 7% weight to today's price and fades out older data. It follows price more closely than a simple average but filters out single-day spikes.
+
+    The ratio $R$ tells us how expensive BTC is relative to what it costs to mine it. Both EMA windows were found by walk-forward cross-validation — see [optimization/best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json).
+
+    **Walk-forward cross-validation:** a method for testing parameters on data they were never trained on. The full history is split into many windows. In each window, the model is trained on the first part and tested on the next part (which it has not seen). The window then moves forward and repeats. The final Sortino score is the average across all the test parts only — never the training parts. This prevents the strategy from being tuned specifically to past data it will never see again.
+
     ---
-    
-    ### Trading Rules
-    
-    **Price / Production Cost Ratio:**
-    
-    $$\\text{Ratio} = \\frac{\\text{BTC Market Price}}{\\text{Production Cost (EMA Smoothed)}}$$
-    
-    **When to trade:**
-    - **BUY:** Ratio < 0.90 → Bitcoin is cheap (price is below 90% of mining cost)
-    - **SELL:** Ratio > 1.10 → Bitcoin is expensive (price is above 110% of mining cost)
-    - **HOLD:** 0.90 ≤ Ratio ≤ 1.10 → Price is normal
-    
-    **Settings:**
-    - `RATIO_BUY_THRESHOLD = 0.90`
-    - `RATIO_SELL_THRESHOLD = 1.10`
-    - Code location: [config.py → SignalConfig](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
-    
-    **Why did I choose ±10%?**
-    - **Testing:** I tested the strategy from 2016 to 2024 and ±10% worked best
-    - **Too wide (±20%):** We miss good chances to buy or sell
-    - **Too narrow (±5%):** We trade too much and pay too many fees. Also get false signals.
-    - **Others use it too:** Similar to what Capriole uses in their model
-    - **Filters noise:** ±10% helps ignore small daily price movements
+
+    ### Position Table — How Much BTC to Hold
+
+    The ratio maps directly to a target BTC allocation. These bands come from
+    [config.py → SignalConfig.POSITION_TABLE](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+    and have not changed since the start of the project:
+
+    | Ratio $R$ | Target BTC Weight | Interpretation |
+    |---|---|---|
+    | $R < 0.80$ | **100%** | Price well below cost — strong buy zone |
+    | $0.80 \\leq R < 0.90$ | **85%** | Below cost — accumulate |
+    | $0.90 \\leq R < 1.00$ | **70%** | Slightly below cost — lean long |
+    | $1.00 \\leq R < 1.10$ | **50%** | Near fair value — neutral |
+    | $1.10 \\leq R < 1.25$ | **30%** | Above cost — reduce exposure |
+    | $R \\geq 1.25$ | **0%** | Significantly above cost — exit |
+
+    **Why these bands?**
+    - They come from Charles Edwards' "Bitcoin Energy Value" framework — [TradingView indicator by Capriole](https://www.tradingview.com/script/xDMwWgRN-Bitcoin-Energy-Value/). The five ratio thresholds (0.80, 0.90, 1.00, 1.10, 1.25) were **not** optimised by walk-forward CV. Adding five more free parameters to an already small dataset would create a high overfitting risk. The thresholds were set once from the paper and frozen.
+    - The step structure means the portfolio moves gradually rather than in large jumps.
+
     """)
-    
+
     st.markdown("---")
-    
+
     # ========== DATA SOURCES ==========
-    st.header("2️⃣ Where I Get My Data")
+    st.header("2️⃣ Data Sources")
+
     st.markdown("""
     ### Bitcoin Price
-    
-    **Main source:** CoinGecko API (free, but only gives 365 days)
-    - Docs: https://www.coingecko.com/en/api/documentation
-    - Use for: Recent prices (less than 1 year)
-    
-    **Backup source:** Yahoo Finance (using yfinance library)
-    - Data: https://finance.yahoo.com/quote/BTC-USD/history
-    - Use for: Old data (more than 1 year)
-    - Why: It's free, no limits, and has data going back to 2014
-    
-    ### Network Hashrate
-    
-    **Source:** Blockchain.com Charts API
-    - API: https://api.blockchain.info/charts/hash-rate?timespan=all&format=json
-    - Data: Daily hashrate (mining power) since 2010
-    - Why: Free, easy to use, has all the history I need
-    
-    ### Technical Details
-    
-    - Code: [data_fetcher.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/data_fetcher.py)
-    - Saves data: I save data locally to avoid asking for it too many times
-    - Updates: Dashboard refreshes data every hour
-    """)
-    
-    st.markdown("---")
-    
-    # ========== PRODUCTION COST MODEL ==========
-    st.header("3️⃣ How I Calculate Mining Cost")
-    
-    st.markdown("""
-    ### The Math
-    
-    **Step 1: How much energy miners use per day**
-    
-    $$\\text{Total Hashes/Day} = \\text{Hashrate (H/s)} \\times 86400 \\text{ seconds}$$
-    
-    $$\\text{Energy (Joules)} = \\text{Total Hashes} \\times \\frac{\\text{Efficiency (J/TH)}}{10^{12}}$$
-    
-    $$\\text{Energy (kWh)} = \\frac{\\text{Energy (J)}}{3.6 \\times 10^6}$$
-    
-    **Step 2: Cost of that energy**
-    
-    $$\\text{Energy Cost} = \\text{Energy (kWh)} \\times \\text{Electricity Price (\\$/kWh)}$$
-    
-    **Step 3: How much Bitcoin gets mined per day**
-    
-    $$\\text{BTC/Day} = \\text{Blocks/Day} \\times \\text{Block Reward}$$
-    
-    - Blocks/Day = 144 (one block every 10 minutes)
-    - Block Reward = Changes with halvings (3.125 BTC after April 2024)
-    
-    **Step 4: Energy cost for one Bitcoin**
-    
-    $$\\text{Energy Cost per BTC} = \\frac{\\text{Total Energy Cost}}{\\text{BTC/Day}}$$
-    
-    **Step 5: Total cost (including everything)**
-    
-    $$\\text{Total Cost per BTC} = \\text{Energy Cost per BTC} \\times \\text{OVERHEAD\\_FACTOR}$$
-    
-    ---
-    
-    ### About the Overhead Factor
-    
-    **OVERHEAD_FACTOR = 1.47**
-    
-    **What does this mean?** Energy is 68% of mining costs. The other 32% are other expenses.
-    
-    **What else do miners pay for:**
-    - **Hardware:** Mining machines get old and break (last 2-3 years)
-    - **Buildings:** Cooling, electricity setup, rent
-    - **People:** Workers who fix and manage everything
-    - **Other stuff:** Insurance, internet, mining pool fees
-    
-    **Where I got 1.47:**
-    - **JPMorgan report (2022):** They say energy is 65-70% of all costs
-    - **MacroMicro:** https://en.macromicro.me/ (Mining cost details from Taiwan)
-    - **Mining companies:** Reports from Compass Mining and Luxor Mining Pool
-    
-    **Why not just use energy costs?**
-    - That would be wrong → bad trading signals
-    - Real miners need to pay for all these things, not just electricity
-    
-    ---
-    
-    ### Electricity Prices Over Time
 
-    
-    **Interactive Tables:**
+    | Source | Used For | Link |
+    |---|---|---|
+    | CoinGecko API (free tier) | Recent prices (up to 365 days) | [https://www.coingecko.com/en/api/documentation](https://www.coingecko.com/en/api/documentation) |
+    | Yahoo Finance via `yfinance` | Historical data (2014 onwards) | [https://finance.yahoo.com/quote/BTC-USD/history](https://finance.yahoo.com/quote/BTC-USD/history) |
+
+    CoinGecko gives higher-quality recent data but is rate-limited. Yahoo Finance covers
+    the full 10-year backtest window for free without any API key.
+
+    ---
+
+    ### Network Hashrate
+
+    **Source:** Blockchain.com Charts API  
+    **Endpoint:** [https://api.blockchain.info/charts/hash-rate?timespan=all&format=json](https://api.blockchain.info/charts/hash-rate?timespan=all&format=json)
+
+    This returns daily network hashrate in TH/s going back to 2009. Free, no authentication needed.
+
+    **Important note:** When fetching a very long window (3,000+ days), Blockchain.com returns
+    one data point every four days instead of daily. The strategy uses linear interpolation to
+    fill the gaps. Fetching at least 3,000 days is intentional — it keeps data density consistent
+    and prevents false Hash Ribbon signals caused by noisy data from shorter windows.
+
+    ---
+
+    ### Data Pipeline
+
+    - **Code:** [data_fetcher.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/data_fetcher.py)
+    - Fetched data is saved locally in `data/` to avoid repeated API calls during the same session.
+    - The dashboard refreshes the cache every **60 minutes** (`@st.cache_data(ttl=3600)`).
     """)
-    
-    import pandas as pd
-    
+
+    st.markdown("---")
+
+    # ========== PRODUCTION COST MODEL ==========
+    st.header("3️⃣ Production Cost Model")
+
+    st.markdown("""
+    ### The Formula (Step by Step)
+
+    **Step 1 — Network energy consumption per day**
+
+    $$\\text{Energy (kWh)} = \\frac{\\text{Hashrate (EH/s)} \\times 10^{18} \\times 86{,}400 \\times \\text{Efficiency (J/TH)}}{10^{12} \\times 3.6 \\times 10^{6}}$$
+
+    *Hashrate: EH/s → H/s by ×$10^{18}$. 86,400 = seconds per day. ÷$10^{12}$ converts TH. ÷$3.6×10^6$ converts joules to kWh.*
+
+    **Step 2 — Energy cost per day**
+
+    $$\\text{Energy Cost} = \\text{Energy (kWh)} \\times \\text{Electricity Price (\\$/kWh)}$$
+
+    **Step 3 — BTC produced per day**
+
+    $$\\text{BTC/Day} = \\underbrace{144}_{\\text{blocks/day}} \\times \\text{Block Reward}$$
+
+    One block is mined roughly every 10 minutes (enforced by the difficulty adjustment algorithm),
+    giving 144 blocks per day. The block reward halves on a fixed schedule.
+
+    **Step 4 — Energy cost per BTC**
+
+    $$\\text{Energy Cost/BTC} = \\frac{\\text{Total Energy Cost}}{\\text{BTC/Day}}$$
+
+    **Step 5 — All-in production cost**
+
+    $$\\boxed{\\text{Production Cost per BTC} = \\text{Energy Cost/BTC} \\times 1.47}$$
+
+    **Code:** [production_cost.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/production_cost.py)
+      → `BTCProductionCostCalculator.calculate_total_cost_per_btc()`
+
+    ---
+
+    ### Overhead Factor = 1.47
+
+    Energy is not a miner's only cost. The factor 1.47 means: for every 1.00 USD spent on electricity, the total all-in cost is 1.47 USD.
+
+    **What the extra 47% covers:** hardware depreciation (ASICs last ~2–3 years), facility costs (cooling, buildings), staff and operations, and admin/pool fees (~1–2%).
+
+    **Where 1.47 comes from:**
+    CoinShares' Bitcoin Mining Network Report estimates electricity at 65–70% of total all-in mining costs, giving 1 / 0.68 ≈ 1.47.
+
+    **This parameter is fixed — not optimised.** Changing it shifts the absolute cost level
+    but not the ratio signal (both numerator and denominator scale identically).
+
+    **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+      → `ProductionCostConfig.OVERHEAD_FACTOR = 1.47`
+
+    ---
+
+    ### Electricity Prices and Miner Efficiency (Historical)
+    """)
+
     col1, col2 = st.columns(2)
-    
+
     electricity_data = {
         'Year': [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026],
         'Price ($/kWh)': [0.10, 0.10, 0.08, 0.07, 0.065, 0.065, 0.07, 0.065, 0.062, 0.06, 0.06],
+        'Notes': [
+            'Small operations, high overhead',
+            'Rapid growth phase',
+            'More competitive energy bids',
+            'Hydropower deals mature',
+            'Cheap energy locked in',
+            'Low-cost region expansion',
+            'Energy crisis pushes up',
+            'Stabilising',
+            'Pre-halving, old miners still running',
+            'Halving forces efficiency upgrades',
+            'Current estimate',
+        ]
     }
-    
+
     efficiency_data = {
         'Year': [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026],
         'Efficiency (J/TH)': [250, 150, 110, 85, 60, 50, 45, 38, 30, 24, 22],
+        'Dominant Hardware': [
+            'Bitmain S7, S8',
+            'S9 rollout',
+            'S9 widespread',
+            'S9 ageing out',
+            'S17 series',
+            'S19 series',
+            'S19 growing',
+            'S19 XP, early S21',
+            'S19 / S21 mix',
+            'S21 Pro widespread',
+            'Next-gen ASICs',
+        ]
     }
-    
+
     with col1:
         st.subheader("Electricity Prices")
         df_electricity = pd.DataFrame(electricity_data)
         st.dataframe(df_electricity, use_container_width=True, hide_index=True)
-        st.caption("Network average electricity costs for miners")
-    
+        st.caption(
+            "Network-average effective electricity rate for mid-to-large mining operations. "
+            "Includes cooling and facility overhead, not just the raw generation rate. "
+            "Sources: US EIA industrial rates "
+            "(https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_a), "
+            "CBECI (https://ccaf.io/cbnsi/cbeci), mining company disclosures."
+        )
+
     with col2:
-        st.subheader("Network Efficiency")
+        st.subheader("Network-Average Miner Efficiency")
         df_efficiency = pd.DataFrame(efficiency_data)
         st.dataframe(df_efficiency, use_container_width=True, hide_index=True)
-        st.caption("Network average miner efficiency (all miners, not just newest)")
-    
+        st.caption(
+            "Network average across all active machines — not just the newest generation. "
+            "Old hardware stays online while it remains profitable, so the network average "
+            "always lags behind the latest flagship ASIC. "
+            "Sources: CoinShares Bitcoin Mining Report, CESifo WP10145, "
+            "Hashrate Index (https://hashrateindex.com/machines)."
+        )
+
     st.markdown("""
-    
-    **Where I got this data:**
-    - **US EIA:** https://www.eia.gov/ (US industrial electricity prices)
-    - **Cambridge:** https://ccaf.io/cbnsi/cbeci (Bitcoin electricity use index)
-    - **Mining companies:** Compass Mining, Luxor Mining Pool price data
-    
-    **Note:** These prices include everything - electricity, cooling, building costs. Not just the basic electricity price.
-    
+    **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+      → `HistoricalParameters.ELECTRICITY_PRICES_USD_PER_KWH` and
+      `HistoricalParameters.NETWORK_AVERAGE_EFFICIENCY_J_PER_TH`
+
     ---
-    
-    ### Mining Machine Efficiency (J/TH)
-    
-    **Why "Network Average"?**
-    
-    The network has old and new machines. So the average is worse than the newest machines.
-    
-    **Values I used:**
-    
-    | Year | J/TH | Main Miners | Source |
-    |------|------|-------------|--------|
-    | 2016 | 250 | S7, S8 (old machines) | MacroMicro, CESifo |
-    | 2017 | 150 | Moving to S9 | Mining pool data |
-    | 2018 | 110 | S9 everywhere | Company specs |
-    | 2019 | 85 | S9 getting old | Network guesses |
-    | 2020 | 60 | S17 starting | JPMorgan report |
-    | 2021 | 50 | S19 series | Pool data |
-    | 2022 | 45 | More S19 | Industry reports |
-    | 2023 | 38 | S19 XP, first S21 | Cambridge data |
-    | 2024 | 30 | Mix of S19/S21 | After halving |
-    | 2025 | 24 | S21 Pro common | My estimate |
-    | 2026 | 22 | Modern machines | Current guess |
-    
-    **Where I got this:**
-    - **MacroMicro:** https://en.macromicro.me/ (Network efficiency guesses)
-    - **JPMorgan:** Reports on network efficiency
-    - **CESifo Paper:** Academic estimates
-    - **Luxor:** https://hashrateindex.com/
-    
-    **In the code:** [config.py → HistoricalParameters](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
-    
+
+    ### Halving Schedule
+
+    The block reward halves on a fixed schedule, encoded as a lookup table in the strategy:
+
+    | Date | Block Reward |
+    |---|---|
+    | Before Nov 28, 2012 | 50 BTC |
+    | Nov 28, 2012 | 25 BTC |
+    | Jul 9, 2016 | 12.5 BTC |
+    | May 11, 2020 | 6.25 BTC |
+    | Apr 20, 2024 | 3.125 BTC |
+    | ~Apr 2028 | 1.5625 BTC |
+
+    Source: [https://en.bitcoin.it/wiki/Controlled_supply](https://en.bitcoin.it/wiki/Controlled_supply)
+
+    Each halving immediately doubles the energy cost per BTC (same energy input, half the output).
+    The production cost signal reflects this automatically on the halving date.
+
+    **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+      → `ProductionCostConfig.HALVING_SCHEDULE`
+
     ---
-    
-    ### Smoothing the Data
-    
-    **Setting:** `EMA_WINDOW = 14 days`
-    
-    **Why I do this:** To remove daily noise from the cost calculation
-    
-    **Why 14 days?**
-    - Good balance between quick and stable
-    - I tried 7, 14, 21, and 30 days
-    - 14 days gave the best signals (less fake signals)
-    - People often use 14 days in trading (2-week cycle)
-    
-    **In the code:** [config.py → ProductionCostConfig](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+
+    ### Cost Series Smoothing
+
+    The raw daily production cost is first smoothed with a **14-day EMA** inside `ProductionCostSeries`,
+    and then the ratio uses the **46-day EMA** (walk-forward optimised). Two-stage smoothing removes
+    both daily hashrate noise and occasional outlier spikes.
+
+    **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+      → `ProductionCostConfig.EMA_WINDOW = 14` (first-stage smoothing; fixed)
     """)
-    
+
     st.markdown("---")
-    
-    # ========== PORTFOLIO & POSITION SIZING ==========
-    st.header("4️⃣ Portfolio Management & Position Sizing")
-    
+
+    # ========== PORTFOLIO MANAGEMENT ==========
+    st.header("4️⃣ Portfolio Management")
+
     st.markdown("""
-    ### Position Table (How Much Bitcoin to Hold)
-    
-    I change how much Bitcoin I hold based on the Price/Cost ratio:
-    
-    | Ratio Range | BTC Weight | Why |
-    |-------------|------------|-----|
-    | < 0.85 | 100% | **Super cheap** → Hold max Bitcoin |
-    | 0.85 - 0.95 | 70% | **Pretty cheap** → Hold lots of Bitcoin |
-    | 0.95 - 1.05 | 50% | **Normal price** → Hold 50/50 |
-    | 1.05 - 1.20 | 30% | **Getting expensive** → Sell some Bitcoin |
-    | > 1.20 | 5% | **Super expensive** → Hold almost no Bitcoin |
-    
-    **Why I designed it this way:**
-    
-    - **Slow changes:** Don't go all-in or all-out at once → less risk
-    - **Always some Bitcoin:** Keep at least 5% in case price suddenly goes up
-    - **50/50 middle ground:** Less trading when price is normal
-    - **No borrowing:** Maximum 100%, I don't use leverage
-    
-    **Idea from:** Risk parity strategies
-    - Research: "Risk Parity" (Bridgewater Associates)
-    - I adapted it for mean-reversion
-    
-    **In the code:** [config.py → PortfolioConfig.POSITION_TABLE](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
-    
+    ### Starting Position
+
+    The backtest opens with $100,000. Up to 2 BTC are bought at the first day's price;
+    any remaining capital stays in USDC.
+
+    **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+      → `PortfolioConfig.INITIAL_PORTFOLIO_USD = 100_000`
+
     ---
-    
-    ### Trading Limits
-    
-    **Setting:** `MAX_DAILY_WEIGHT_CHANGE = 0.25` (25%)
-    
-    **Why:** Stop big sudden changes in the portfolio
-    
-    **Why 25%?**
-    - Stops bad signals from making big mistakes
-    - I tried 10%, 25%, 50%
-    - 25% was good - fast enough but not too much
-    - Saves on trading fees
-    
-    **Example:**
-    - I have 50% Bitcoin now
-    - Signal says go to 100%
-    - I only go to 75% today (can only add +25%)
-    - Tomorrow I can add another +25% if signal still says so
-    
-    **Common in trading:** People use this in professional trading
-    
+
+    ### Daily Weight Change Limit — 10%
+
+    At most 10 percentage points of the portfolio move toward the target each day.
+    Moving from 50% BTC to 100% BTC takes five trading days.
+
+    This limits market impact on a real exchange and prevents a single noisy signal
+    from causing a large, costly trade.
+
+    *Example: target = 100%, current = 50%.*
+    *Day 1 → 60%, Day 2 → 70%, Day 3 → 80%, Day 4 → 90%, Day 5 → 100%.*
+
+    **Fixed.** 10% is a standard daily position-limit assumption for algorithmic execution strategies.
+
     ---
-    
-    ### Starting Values
-    
-    **Starting money:** $100,000
-    
-    **Starting Bitcoin:** Up to 2.0 BTC (depends on price)
-    
-    **How it works:**
-    - If 2 BTC × First_Price ≤ $100k → Start with 2 BTC + rest in USDC
-    - If 2 BTC × First_Price > $100k → Buy what $100k can buy
-    
-    **Why like this?**
-    - Same starting value no matter what dates I test
-    - No borrowing money (safe)
-    - Good for medium-size trader
-    
-    **In the code:** [backtest.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/backtest.py), [portfolio.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/portfolio.py)
-    
+
+    ### Minimum Rebalance Threshold — 4%
+
+    No trade executes if the target weight is less than 4 percentage points from the
+    current weight. This avoids paying fees for very small adjustments.
+
+    **Fixed.** Chosen so the strategy does not churn on band-boundary noise.
+
     ---
-    
-    ### Trading Costs
-    
-    **Trading Fee:** `0.1%` for each trade (0.001 as decimal)
-    
-    **Where I got this:**
-    - **Coinbase Pro:** 0.05% - 0.50% (depends on volume)
-    - **Kraken:** 0.16% - 0.26%
-    - **Binance:** 0.10% (average)
-    - **I chose:** 0.1% as a safe middle value
-    
-    **Slippage:** `0.2%` (I defined it but don't use it yet)
-    
-    **In the code:** [config.py → PortfolioConfig](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+
+    ### Trading Fees — 0.1% per trade
+
+    Applied on every buy or sell. Current exchange rates for reference:
+    - Binance spot: 0.10% standard ([https://www.binance.com/en/fee/schedule](https://www.binance.com/en/fee/schedule))
+    - Coinbase Advanced Trade: 0.05–0.60% depending on volume ([https://www.coinbase.com/advanced-trade/fees](https://www.coinbase.com/advanced-trade/fees))
+    - Kraken: 0.16–0.26% for most users
+
+    0.1% is a mid-range estimate for a regular trader on a major spot exchange.
+    **Fixed** — set to match Binance standard rate.
+
+    ---
+
+    ### Portfolio Parameters — Summary
+
+    | Parameter | Value | Status | Source |
+    |---|---|---|---|
+    | Starting capital | $100,000 | **Fixed** | Normalised baseline for fair comparison |
+    | Starting BTC | up to 2.0 BTC | **Fixed** | Capped so BTC value ≤ starting capital |
+    | Max daily weight change | 10% | **Fixed** | Standard algorithmic execution limit |
+    | Min rebalance threshold | 4% | **Fixed** | Transaction cost floor |
+    | Trading fee | 0.1% | **Fixed** | [Binance standard spot rate](https://www.binance.com/en/fee/schedule) |
+
+    **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+      → `PortfolioConfig`
     """)
-    
+
     st.markdown("---")
-    
-    # ========== ML OPTIMIZATION ATTEMPTS ==========
-    st.header("5️⃣ I Tried Using Machine Learning")
-    
-    st.markdown("""
-    ### What I Tried
-    
-    **Goal:** Make the strategy better by using machine learning to find the best settings.
-    
-    ---
-    
-    ### Try 1: Ridge Regression
-    
-    **What I did:**
-    - Used 10 years of data (2014-2024)
-    - Made features: Ratio, moving averages, volatility, momentum
-    - Tried to predict: 7-day, 14-day, 30-day future returns
-    - Model: Ridge regression with cross-validation
-    
-    **What happened:**
-    - **Model score:** 0.02 - 0.08 (very bad at predicting)
-    - **New thresholds:** BUY at 0.87, SELL at 1.13 (vs my 0.90/1.10)
-    - **Performance:** Only 2-3% better
-    - **My decision:** Not worth it, too complicated for small gain
-    
-    **Why it didn't work well:**
-    - Bitcoin is very random and always changing
-    - My simple ratio already works pretty good
-    - Risk of overfitting to old data
-    
-    **What I learned:**
-    - In crypto where everything changes, simple strategies often beat complex ML
-    - Production cost is a strong enough signal by itself
-    
-    **Research backs this up:**
-    - "The Cross-Section of Expected Crypto Returns" (Liu, Tsyvinski, Wu, 2019)
-    - Finding: Simple strategies beat complex ML in crypto
-    
-    **The code:** [optimization/ml_parameter_optimizer.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/ml_parameter_optimizer.py)
-    """)
-    
-    st.markdown("---")
-    
-    # ========== RISK METRICS ==========
-    st.header("6️⃣ Risk Management & Protection Systems")
+
+    # ========== SIGNAL FILTERS & ABLATION ==========
+    st.header("5️⃣ Signal Filters")
 
     st.markdown("""
-    ### How the Risk Engine Works
+    ### Ablation Study — What Each Component Contributes
 
-    The strategy uses a **4-mode professional risk engine** that is always active.
-    It looks at three numbers every day — drawdown, volatility, and VaR — and decides which mode to be in.
-    Each mode puts a hard cap on how much BTC the portfolio can hold.
+    **Sortino ratio:** a measure of risk-adjusted return. It is the average yearly return divided by how large the losing days were (only downside volatility counts — good volatility on the upside is not penalised). Higher = better. A Sortino of 2.0 means the strategy returns twice as much per unit of downside risk.
 
-    ---
+    Each filter was switched off one at a time. Everything else stayed active.
+    The table shows the drop in **out-of-sample Sortino ratio**.
+    Baseline (all on) = **2.443**.
 
-    ### The 4 Modes
-
-    | Mode | Max BTC Exposure | When It Activates |
+    | Component removed | Sortino change | Verdict |
     |---|---|---|
-    | **NORMAL** | 100% | Everything looks fine |
-    | **CAUTION** | 75% | Drawdown < −12%, or vol > 75%, or VaR > 4% |
-    | **RISK_OFF** | 45% | Drawdown < −20%, or vol > 100%, or VaR > 6% |
-    | **EMERGENCY** | 5% | Drawdown < −35%, or vol > 140%, or VaR > 9% |
+    | Signal EMA smoothing | **−0.43** | Biggest driver |
+    | Hash Ribbon filter | **−0.34** | Second biggest |
+    | Trend filter (360-day EMA) | **−0.26** | Significant |
+    | RSI oversold boost | **−0.07** | Small but consistent; kept |
+    | 4-mode risk engine | **−0.02** | Low Sortino impact, strong tail protection |
+    | Volatility scaling | **−0.02** | Low Sortino impact, keeps vol near 40% target |
 
-    **Example:** If Bitcoin drops 22% from its recent peak, the engine switches to RISK_OFF and the portfolio can hold at most 45% BTC. This limits losses automatically.
-
-    ---
-
-    ### Sticky Recovery
-
-    The engine does **not jump back to NORMAL immediately** when things improve.
-    It waits until drawdown, volatility, *and* VaR all return to safe levels, **and** it counts several calm days first:
-
-    - CAUTION → needs 2 calm days before upgrading
-    - RISK_OFF → needs 3 calm days
-    - EMERGENCY → needs 5 calm days
-
-    **Why?** Markets often bounce briefly after a crash. Sticky recovery stops the strategy from going back to full exposure too early.
+    The risk engine and volatility scaler rarely activate, so their Sortino improvement
+    looks small. But in 2018 and 2022 they cut exposure for weeks during the worst drops —
+    which Sortino alone does not fully show.
 
     ---
 
-    ### Volatility Scaling (always on)
+    ### Trend Filter
 
-    Even inside NORMAL mode, position size is scaled by volatility:  
-    $$\\text{Scale} = \\frac{\\text{Vol Target (40\\% ann.)}}{\\text{Realised Vol (15-day)}}$$
+    **Setting:** `TREND_FILTER_WINDOW = 360 days` — **walk-forward optimised**
+    ([best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json))
 
-    The scale is capped between 0.20 and 1.00, so the strategy never levers up and never goes below 20% exposure.
+    When BTC price is below its 360-day EMA, the strategy caps BTC exposure at **0%**
+    regardless of the ratio signal. This prevents holding BTC through a prolonged bear market.
 
-    **Why?** This keeps risk roughly constant over time. In calm markets we hold more; in wild markets we hold less.
-
-    ---
-
-    ### Hash Ribbon Filter (miner capitulation)
-
-    The Hash Ribbon compares a **30-day** and **60-day** moving average of the Bitcoin network hashrate.  
-    When the fast SMA drops below the slow SMA, miners are shutting down — this is a danger sign.
-
-    - Fast SMA < Slow SMA → strategy caps exposure to 0% (full exit)
-    - Once miners recover (fast > slow), normal trading resumes
-
-    **Why?** Miner capitulation often precedes large price drops (e.g. 2018, 2022). This filter was validated in walk-forward testing (+0.27 OOS Sortino improvement).
+    Shorter windows (e.g. 200 days) generate too many false bear signals during normal
+    corrections. 360 days was found optimal by walk-forward cross-validation.
 
     ---
 
-    ### Trend Filter (Bull / Bear)
+    ### Hash Ribbon Filter
 
-    The strategy checks if the current BTC price is above its 250-day EMA:
-    - Above EMA → normal trading
-    - Below EMA → exposure capped at 0% (bear market protection)
+    **Settings:** Fast SMA = **30 days**, Slow SMA = **60 days** — **fixed from literature**;
+    `HASH_RIBBON_CAP_MULT = 0.1` — **walk-forward optimised**
+    ([best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json))
 
-    This stops the strategy from buying into prolonged bear markets.
+    **What the Hash Ribbon measures:** Network hashrate is the total computing power solving Bitcoin blocks. When mining is profitable, hashrate grows as operators add machines. When miners lose money, they shut machines off and hashrate falls.
+
+    The filter tracks two simple moving averages (SMAs) of daily hashrate:
+    - **Fast SMA (30 days):** reacts quickly to recent changes in miner activity.
+    - **Slow SMA (60 days):** represents the longer-term hashrate trend.
+
+    When the fast SMA crosses below the slow SMA, it means hashrate has recently started falling — miners are actively turning off machines. This is called **miner capitulation**. Historically it precedes large price drops, because distressed miners sell BTC to cover running costs before shutting down. The fast/slow SMA pair catches the crossover early: the fast line reacts to the drop first, then the slow line confirms the trend.
+
+    - Fast SMA < Slow SMA (capitulation active): BTC exposure capped to `0.1 × current mode cap`
+    - Fast SMA > Slow SMA (recovery): normal trading resumes
+
+    The 30/60-day windows come from Charles Edwards' original Hash Ribbon research:
+    [Capriole — Hash Ribbons & Bitcoin Bottoms](https://capriole.com/hash-ribbons-bitcoin-bottoms/).
+    The cap multiplier of 0.1 was tuned by walk-forward optimisation — instead of a hard 0% shutdown, a small residual position slightly improves out-of-sample Sortino.
+
+    **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+      → `PortfolioConfig.HASH_RIBBON_FAST = 30`, `HASH_RIBBON_SLOW = 60`, `HASH_RIBBON_CAP_MULT = 0.1`
+
+    ---
+
+    ### Volatility Scaling
+
+    **Settings:** Vol target = **40% annualised** (optimised), lookback = **15 days** (fixed),
+    min scale = **0.20** (fixed), max scale = **1.00** (fixed)
+
+    $$\\text{Scale} = \\text{clip}\\!\\left(\\frac{0.40}{\\text{Realised Vol (15d)}},\\ 0.20,\\ 1.00\\right)$$
+
+    When realised vol exceeds 40% annualised, the position shrinks proportionally.
+    At low vol, scale stays at 1.00 — no leverage.
+
+    - **VOL_TARGET = 0.40** — optimised. Raw BTC runs at 60–80% annualised vol.
+    - **VOL_SCALING_WINDOW = 15 days** — fixed. Standard two-week lookback.
+    - **VOL_SCALE_MIN = 0.20** — keeps at least 20% BTC exposure during recoveries.
+    - **VOL_SCALE_MAX = 1.00** — no leverage.
 
     ---
 
     ### RSI Oversold Boost
 
-    When RSI (14-day) drops below 30, the target BTC weight is multiplied by **×1.30**.
-    This adds a small extra buy when Bitcoin is deeply oversold — a classic mean-reversion signal.
+    **Settings:** Window = **14 days** (fixed), threshold = **28** (optimised), multiplier = **1.30** (fixed)
+
+    When the 14-day RSI drops below 28, the target BTC weight multiplies by ×1.30.
+    This adds a small extra buy push during very oversold conditions (e.g. March 2020).
+
+    | Parameter | Value | Status | Source |
+    |---|---|---|---|
+    | RSI period | 14 days | **Fixed** | [Wilder (1978) — RSI standard](https://en.wikipedia.org/wiki/Relative_strength_index) |
+    | RSI threshold | 28 | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Multiplier | 1.30 | **Fixed** | Calibrated; consistent with momentum literature |
 
     ---
 
-    ### Risk Metrics Tracked
+    ### Sentiment Signals Tested and Dropped
 
-    **Volatility (30-day)**
-    - Formula: $\\text{Vol} = \\text{std}(\\text{daily returns}) \\times \\sqrt{252}$
-    - Measures how much risk the portfolio carries right now
+    **Fear & Greed Index** — removed. Native data starts January 2018; pre-2018 values are
+    back-calculated from other indicators, not observed in real time. Using them inflates
+    backtest results artificially.
+    Source: [alternative.me/crypto/fear-and-greed-index](https://alternative.me/crypto/fear-and-greed-index/)
 
-    **Value-at-Risk (99% confidence)**
-    - Formula: $\\text{VaR}_{99} = \\mu - 2.33 \\times \\sigma$
-    - Worst daily loss expected 99 out of 100 days
+    **SOPR (Spent Output Profit Ratio)** — removed. Reliable daily data starts around 2020.
+    Too short a history to validate properly without overfitting.
+    Source: [glassnode.com/metrics/sopr](https://glassnode.com/metrics/sopr)
+    """)
 
-    **Max Drawdown**
-    - Formula: $\\text{DD} = \\frac{\\text{Value} - \\text{Peak}}{\\text{Peak}}$
-    - Biggest fall from any previous high point
+    st.markdown("---")
 
-    **Sharpe / Sortino Ratios**
-    - Sharpe: $\\frac{\\mu}{\\sigma} \\times \\sqrt{252}$ — return per unit of total risk
-    - Sortino: same but only counts downside volatility (more relevant for crypto)
+    # ========== RISK MANAGEMENT ==========
+    st.header("6️⃣ Risk Management Engine")
+
+    st.markdown("""
+    ### Overview
+
+    The risk engine runs every day and checks **three signals**: drawdown, annualised volatility,
+    and Value-at-Risk (99%, 1-day). If any one of them crosses its threshold, the engine moves
+    up to a more defensive mode and caps the maximum BTC allocation.
+
+    Recovery is slow on purpose: the engine returns to a less defensive mode only when **all three
+    signals have healed** and a minimum number of consecutive calm days has passed.
+    This stops the strategy from rushing back to full exposure after a short bounce.
+
+    ---
+
+    ### Indirect vs. Direct Risk Controls
+
+    Most of the strategy's downside protection is **indirect** — it works by reducing position size, not by forcing a hard exit:
+
+    | Indirect control | How it protects |
+    |---|---|
+    | **Production cost ratio** | Reduces BTC allocation when price is well above cost |
+    | **360-day trend filter** | Forces 0% BTC in structural bear markets |
+    | **Hash Ribbon filter** | Cuts exposure to near-zero during miner capitulation |
+    | **4-mode risk engine** | Caps max BTC at 75/45/5% when drawdown, vol, or VaR exceeds threshold |
+    | **Volatility scaling** | Shrinks position proportionally when realised vol exceeds 40% |
+    | **Max daily weight change** | Limits how fast the portfolio moves, reducing impact of false signals |
+
+    I also tested a **direct** approach: stop-loss at −15%, take-profit at +25%, and trailing stop at −10%. All three forced hard binary exits. They consistently triggered on normal pullbacks and caused the strategy to miss the recovery. All three hurt Sortino and were dropped. The indirect, gradual approach works better for an asset as volatile as Bitcoin.
+
+    ---
+
+    ### The 4 Modes — Optimised Thresholds
+
+    Drawdown thresholds, vol thresholds, and VaR thresholds are all **walk-forward optimised**
+    (loaded from [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json)).
+    Max BTC caps are **fixed** — see note below.
+
+    | Mode | DD trigger | Ann. vol trigger | VaR (99%, 1d) trigger | Max BTC |
+    |---|---|---|---|---|
+    | **NORMAL** | — | — | — | **100%** |
+    | **CAUTION** | ≤ −6% | ≥ 130% | ≥ 4% | **75%** |
+    | **RISK_OFF** | ≤ −36% | ≥ 220% | ≥ 6% | **45%** |
+    | **EMERGENCY** | ≤ −53% | ≥ 230% | ≥ 9% | **5%** |
+
+    The RISK_OFF and EMERGENCY drawdown thresholds look large because they apply to
+    **portfolio drawdown** — already dampened by position sizing, trend filter, and Hash Ribbon.
+    Raw BTC drawdown in bear markets often exceeds 70–80%.
+
+    Max BTC caps (100 → 75 → 45 → 5%) are **fixed**. The ablation impact was −0.02 Sortino,
+    meaning changing them barely helps on average. The geometric step-down reflects standard
+    institutional risk-escalation logic and was not changed after it was set.
+
+    **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+      → `RiskManagementConfig.MODE_CAPS`
+
+    ---
+
+    ### Sticky Recovery
+
+    To recover to a less defensive mode, **all three** signals must drop below their
+    recovery thresholds, and the required number of calm days must have passed:
+
+    | Current mode | Recovery conditions | Calm days needed |
+    |---|---|---|
+    | CAUTION → NORMAL | DD > −9%, Vol < 65%, VaR < 2.5% | **2 days** |
+    | RISK_OFF → CAUTION | DD > −16%, Vol < 85%, VaR < 4% | **3 days** |
+    | EMERGENCY → RISK_OFF | DD > −28%, Vol < 120%, VaR < 6% | **5 days** |
+
+    Recovery days and recovery thresholds are **fixed** — not walk-forward optimised.
+    They set a minimum stabilisation period to rule out dead-cat-bounce recoveries.
+
+    **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
+      → `RiskManagementConfig.RECOVERY_DAYS` and `RECOVERY_THRESHOLDS`  
+    **Code:** [risk_manager.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/risk_manager.py)
+
+    ---
+
+    ### Risk Metrics — Formulas
+
+    **Drawdown (rolling 252-day peak)**
+
+    $$\\text{DD} = \\frac{\\text{Portfolio Value} - \\text{Peak}_{252\\text{d}}}{\\text{Peak}_{252\\text{d}}}$$
+
+    A rolling 252-day peak (one trading year) prevents the engine from staying locked in EMERGENCY
+    mode for years because the 2021 all-time high is still above current levels.
+    Source for 252-day standard: hedge fund industry annual calculation horizon.
+
+    **Annualised Volatility (30-day lookback, fixed)**
+
+    $$\\text{Vol} = \\text{std}(r_{1..30}) \\times \\sqrt{252}$$
+
+    **Value-at-Risk (99% confidence, 30-day lookback, fixed)**
+
+    $$\\text{VaR}_{99} = \\mu - 2.33 \\times \\sigma$$
+
+    where $\\mu$ and $\\sigma$ are the mean and standard deviation of the last 30 daily returns.
+    Z-score = 2.33 is the standard 99th-percentile value for a normal distribution.
+
+    **Sharpe Ratio**
+
+    $$\\text{Sharpe} = \\frac{\\bar{r}}{\\sigma_r} \\times \\sqrt{252}$$
+
+    Return per unit of **total** volatility — both upside and downside days are penalised equally.
+
+    **Sortino Ratio**
+
+    $$\\text{Sortino} = \\frac{\\bar{r}}{\\sigma_{\\text{downside}}} \\times \\sqrt{252}$$
+
+    Return per unit of **downside** volatility only. Days where the portfolio gains are not counted
+    as risk.
+
+    ---
+
+    **Why Sortino was chosen as the optimisation target instead of Sharpe:**
+
+    Bitcoin has a strongly asymmetric return distribution. A good year (2020: +300%, 2023: +154%)
+    produces very large positive daily returns. Sharpe treats these large positive moves as just
+    as bad as large negative moves — both increase $\\sigma_r$. This means Sharpe *penalises the
+    strategy for bull-market performance*, which is the opposite of what an investor wants.
+
+    Sortino only measures risk where it actually hurts — on losing days. A strategy that rides
+    large Bitcoin rallies fully and cuts exposure during crashes will score higher on Sortino than
+    on Sharpe, and that is the correct reward for exactly the behaviour this strategy targets.
+
+    Concretely: in walk-forward CV on 3,297 days of data, the baseline strategy achieved
+    Sortino = **2.443** vs. Sharpe ≈ **1.38**. The gap exists because Bull-run months have
+    30–50% monthly returns — Sharpe counts those as "volatile" and docks the score. Sortino
+    does not.
+
+    ---
 
     **Code:** [risk_manager.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/risk_manager.py)
+
+    ---
+
+    ### Potential Improvement — Regime-Aware VaR
+
+    The current VaR calculation assumes returns follow a normal distribution (z = 2.33 for 99%).
+    Bitcoin returns are not normal — they have fat tails, meaning extreme losses happen more
+    often than the model expects. A future improvement would be to use a **GARCH model** or
+    **historical simulation** instead of parametric VaR. GARCH adapts to changing volatility
+    regimes; historical simulation uses the actual tail of observed losses without any
+    distribution assumption.
+    Reference: [Engle (2001) — GARCH 101](https://pubs.aeaweb.org/doi/10.1257/jep.15.4.157)
     """)
-    
+
     st.markdown("---")
-    
+
+    # ========== PARAMETER TABLE ==========
+    st.header("7️⃣ Complete Parameter Reference")
+
+    st.markdown("""
+    ### Optimised vs. Fixed — Summary Table
+
+    | Parameter | Value | Status | Source |
+    |---|---|---|---|
+    | Price EMA window | 28 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Cost EMA window | 46 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Signal EMA window | 3 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Trend filter window | 360 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | RSI oversold threshold | 28 | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Volatility target | 40% ann. | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | CAUTION DD threshold | −6% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | RISK_OFF DD threshold | −36% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | EMERGENCY DD threshold | −53% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Overhead factor | 1.47 | **Fixed** | [CoinShares Bitcoin Mining Report](https://coinshares.com/research/bitcoin-mining-network) |
+    | Blocks per day | 144 | **Fixed** | Bitcoin protocol — 10-minute block target |
+    | Hash Ribbon fast SMA | 30 days | **Fixed** | [Capriole Hash Ribbon research](https://capriole.com/hash-ribbons-bitcoin-bottoms/) |
+    | Hash Ribbon slow SMA | 60 days | **Fixed** | [Capriole Hash Ribbon research](https://capriole.com/hash-ribbons-bitcoin-bottoms/) |
+    | Hash Ribbon cap multiplier | 0.10 | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | RSI window | 14 days | **Fixed** | Wilder (1978) — technical analysis standard |
+    | RSI multiplier | 1.30 | **Fixed** | Momentum literature calibration |
+    | Vol scaling lookback | 15 days | **Fixed** | Standard two-week window |
+    | Vol scale min | 0.20 | **Fixed** | Keep minimum market participation |
+    | Vol scale max | 1.00 | **Fixed** | No leverage |
+    | Rolling peak window | 252 days | **Fixed** | One trading year — hedge fund industry standard |
+    | VaR lookback | 30 days | **Fixed** | Standard 1-month lookback |
+    | VaR confidence z-score | 2.33 | **Fixed** | 99th percentile normal distribution |
+    | Recovery days — CAUTION | 2 days | **Fixed** | Minimum stabilisation window |
+    | Recovery days — RISK_OFF | 3 days | **Fixed** | Minimum stabilisation window |
+    | Recovery days — EMERGENCY | 5 days | **Fixed** | Minimum stabilisation window |
+    | Max daily weight change | 10% | **Fixed** | Market impact assumption |
+    | Min rebalance threshold | 4% | **Fixed** | Transaction cost floor |
+    | Trading fee | 0.1% | **Fixed** | [Binance standard spot rate](https://www.binance.com/en/fee/schedule) |
+    | Starting capital | $100,000 | **Fixed** | Normalised for fair comparison across periods |
+
+    ---
+
+    ### ML Optimisation Attempt (Ridge Regression)
+
+    As a separate experiment, I trained a Ridge regression model to predict 7-day, 14-day, and
+    30-day forward returns using features built from the ratio, EMAs, momentum, and volatility.
+
+    **Result:** Model R² ranged from 0.02 to 0.08 — very low predictive power.
+    The thresholds it suggested (BUY at 0.87, SELL at 1.13) produced only a 2–3% Sortino improvement
+    over the walk-forward baseline, which was not worth the added complexity and overfitting risk.
+
+    **Takeaway:** In a market with frequent regime changes (bull/bear/halving cycles), the simpler
+    rule-based system with interpretable parameters generalises better than a learned model.
+
+    Academic reference: Liu, Tsyvinski & Wu (2019), "The Cross-Section of Expected Crypto Returns":
+    [https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3244646](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3244646)
+
+    **Code:** [optimization/ml_parameter_optimizer.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/ml_parameter_optimizer.py)
+    """)
+
+    st.markdown("---")
+
     # ========== LIMITATIONS ==========
-    st.header("7️⃣ What's Missing & What I Assume")
-    
+    st.header("8️⃣ Assumptions & Known Limitations")
+
     st.markdown("""
-    ### Model Problems
-    
-    **1. Mining Cost Simplifications**
-    - Uses average efficiency, not real miner mix
-    - Overhead factor is fixed but it changes over time
-    
-    **2. Trading Assumptions**
-    - Assumes instant execution at market price
-    - Doesn't model slippage or partial fills
-    
-    **3. Transaction Costs**
-    - Fixed 0.1% fee regardless of trade size
-    
-    **4. Risk Management Limitations**
-    - Simple percentages (could be adaptive)
-    - No protection against flash crashes
-    
-    **5. Data Quality**
-    - Free public data may have gaps
-    - Electricity prices are estimates
-    
-    ### Potential Improvements (Future Work)
-    
-    - **ML price prediction:** Try ML to predict fair price and find best parameters (ratio thresholds, stop-loss, take-profit)
-    - **Sentiment analysis:** Add social media sentiment as extra signal
-    - **Hard part:** Mining cost prediction is very hard, model is noisy and uncertain
-    - **Benchmarking:** I compared my model with MacroMicro data (paid API) so I scraped the public chart and tuned parameters
-    - **Code reference:** I compare real costs in [compare_real_costs.py](compare_real_costs.py)
-    
+    ### Model Simplifications
+
+    **1. Fixed overhead factor**
+    The 1.47 factor is held constant across all years. In reality it varies: CAPEX per TH has
+    fallen significantly since 2016 as ASIC manufacturing has scaled and become more competitive.
+
+    **2. Year-step efficiency table**
+    The efficiency table advances in yearly steps. The real network average shifts continuously
+    as new machines are added and old ones are retired month by month.
+
+    **3. No slippage model**
+    The backtest assumes trades execute at the closing price with no market impact.
+    Large orders on a real exchange would move the price slightly, especially in thin markets.
+
+    **4. Hashrate interpolation**
+    For windows longer than ~2,000 days, Blockchain.com returns one data point every four days.
+    Linear interpolation fills the gaps. Short-term hashrate spikes may be smoothed over.
+
+    **5. Backtest period and forward caution**
+    The strategy was designed and optimised on 2016–2026 data. It has not been run in live trading.
+    Past backtest performance does not guarantee future returns.
+
+    ---
+
+    ### Potential Future Improvements
+
+    - **Adaptive overhead factor:** Model CAPEX per TH over time using public ASIC price data from
+      Hashrate Index ([https://hashrateindex.com/machines](https://hashrateindex.com/machines)).
+    - **On-chain signals (post-2020 data):** SOPR and miner wallet flows become usable when a full
+      training window is available.
+    - **Live paper trading:** Running in paper-trade mode on a real exchange API to validate signal
+      quality against live market conditions.
+    - **Mining cost benchmarking:** The model was already compared against MacroMicro's public cost
+      chart (scraped from the public page since the raw API is paid).
+      Code: `compare_real_costs.py`.
     """)
-    
+
     st.markdown("---")
-    
-    # ========== FULL SOURCE INDEX ==========
+
+    # ========== SOURCE INDEX ==========
     st.header("Complete Source Index")
-    
+
     st.markdown("""
-    ### Code
-    - **GitHub:** https://github.com/Luka24/btc_usdc_trading_strategy
-    
-    ### Main Files
-    - [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py) - All settings
-    - [backtest.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/backtest.py) - Testing the strategy
-    - [risk_manager.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/risk_manager.py) - Risk tracking
-    
-    ### Key Research Sources
-    
-    **Strategy & Mining Cost:**
-    1. Capriole Investments - Bitcoin Energy Value: https://capriole.io/
-    2. JPMorgan Bitcoin Research: https://www.jpmorgan.com/insights/research
-    3. Cambridge CCAF - Bitcoin Electricity: https://ccaf.io/cbnsi/cbeci
-    
-    **Risk Management:**
-    4. Binance Academy - Risk Management: https://academy.binance.com/
-    5. Investopedia - Stop-Loss: https://www.investopedia.com/terms/s/stop-lossorder.asp
-    6. Investopedia - Risk/Reward: https://www.investopedia.com/terms/r/riskrewardratio.asp
-    7. Schwab - Trailing Stops: https://www.schwab.com/
-    
-    **Data Sources:**
-    8. CoinGecko API: https://www.coingecko.com/en/api/documentation
-    9. Blockchain.com Charts: https://api.blockchain.info/charts/hash-rate
-    10. Bitcoin Volatility Index: https://www.buybitcoinworldwide.com/volatility-index/
+    ### Code Repository
+    **GitHub:** [https://github.com/Luka24/btc_usdc_trading_strategy](https://github.com/Luka24/btc_usdc_trading_strategy)
+
+    ### Key Files
+    | File | Purpose |
+    |---|---|
+    | [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py) | All strategy parameters |
+    | [production_cost.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/production_cost.py) | Mining cost calculator |
+    | [backtest.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/backtest.py) | Backtest engine |
+    | [portfolio.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/portfolio.py) | Position sizing and rebalancing |
+    | [risk_manager.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/risk_manager.py) | 4-mode risk engine |
+    | [data_fetcher.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/data_fetcher.py) | API data pipeline |
+    | [optimization/best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) | Walk-forward optimised parameters |
+
+    ---
+
+    ### Research & Data Sources
+
+    **Strategy & Mining Economics**
+    1. Capriole Investments — Bitcoin Energy Value (TradingView indicator): [https://www.tradingview.com/script/xDMwWgRN-Bitcoin-Energy-Value/](https://www.tradingview.com/script/xDMwWgRN-Bitcoin-Energy-Value/)
+    2. Capriole — Hash Ribbons & Bitcoin Bottoms: [https://capriole.com/hash-ribbons-bitcoin-bottoms/](https://capriole.com/hash-ribbons-bitcoin-bottoms/)
+    3. CoinShares — Bitcoin Mining Network Report: [https://coinshares.com/research/bitcoin-mining-network](https://coinshares.com/research/bitcoin-mining-network)
+    4. CESifo WP10145 — Economics of Bitcoin Mining: [https://www.cesifo.org/DocDL/cesifo1_wp10145.pdf](https://www.cesifo.org/DocDL/cesifo1_wp10145.pdf)
+
+    **Energy & Hardware Data**
+    5. Cambridge CBECI: [https://ccaf.io/cbnsi/cbeci](https://ccaf.io/cbnsi/cbeci)
+    6. US EIA — Industrial Electricity Prices: [https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_a](https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=epmt_5_6_a)
+    7. MacroMicro — Bitcoin Production Cost: [https://en.macromicro.me/charts/27916/bitcoin-production-cost](https://en.macromicro.me/charts/27916/bitcoin-production-cost)
+    8. Hashrate Index (Luxor) — ASIC Hardware: [https://hashrateindex.com/machines](https://hashrateindex.com/machines)
+
+    **Sentiment & On-Chain**
+    9. Alternative.me — Fear & Greed Index: [https://alternative.me/crypto/fear-and-greed-index/](https://alternative.me/crypto/fear-and-greed-index/)
+    10. Glassnode — SOPR: [https://glassnode.com/metrics/sopr](https://glassnode.com/metrics/sopr)
+
+    **Data APIs**
+    11. CoinGecko API: [https://www.coingecko.com/en/api/documentation](https://www.coingecko.com/en/api/documentation)
+    12. Blockchain.com Hashrate: [https://api.blockchain.info/charts/hash-rate?timespan=all&format=json](https://api.blockchain.info/charts/hash-rate?timespan=all&format=json)
+
+    **Exchange Fees**
+    13. Binance Fee Schedule: [https://www.binance.com/en/fee/schedule](https://www.binance.com/en/fee/schedule)
+    14. Coinbase Advanced Trade Fees: [https://www.coinbase.com/advanced-trade/fees](https://www.coinbase.com/advanced-trade/fees)
+
+    **Academic**
+    15. Liu, Tsyvinski & Wu (2019) — Cross-Section of Expected Crypto Returns: [https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3244646](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3244646)
+    16. Bitcoin Halving Schedule: [https://en.bitcoin.it/wiki/Controlled_supply](https://en.bitcoin.it/wiki/Controlled_supply)
     """)
-    
+
     st.markdown("---")
-    st.info("**Note:** All values and sources current as of February 2026. I built this by reading research and testing different ideas.")
+    st.caption(
+        "All parameters reflect the codebase as of February 2026. "
+        "Walk-forward optimised values are loaded from optimization/best_params.json at runtime "
+        "and override the defaults in config.py. "
+        "Fixed parameters are set directly in config.py and do not change between runs."
+    )

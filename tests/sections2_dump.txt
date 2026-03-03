@@ -1,0 +1,44 @@
+=== TITLE AREA (around BTC/USDC) ===
+'\n\n    c.showPage()\n    c.save()\n    buffer.seek(0)\n    return buffer.getvalue()\n\n# Header\nst.title("BTC/USDC Mean-Reversion Strategy")\nst.markdown("Live data via CoinGecko and Blockchain.info | Updates hourly")\n\nst.markdown(\n    """\n    <div style="border:1px solid #E6E9EF; background:#F7F9FC; paddi'
+
+=== SORTINO LOADED LINE ===
+')\n\n    \nexcept Exception as e:\n    st.error(f"Problem with data: {str(e)}")\n    st.info("Maybe check your internet connection")\n    st.stop()\n\n# Metrics Row\nif _BEST_PARAMS_LOADED:\n    st.success(f"✅ Optimized parameters loaded (walk-forward OOS Sortino = {_BEST_PARAMS_SORTINO:.3f})")\nst.markdown("### Performance Metrics")\ncol1, col2, col3, col4, col5, col6 = st.columns(6)\n\nwith col1:\n    st.metri'
+
+=== EXPANDER FIRST 500 chars ===
+'with st.expander("How this strategy works", expanded=False):\n    st.markdown("""\n    #### Core signal — Price vs. Mining Cost ratio\n    Bitcoin’s daily production cost is estimated from network hashrate and electricity prices.\n    When price falls below mining cost, miners run at a loss — unsustainable long-term.\n    The ratio (price ÷ cost) sets the BTC allocation each day:\n\n    | Ratio | BTC allocation |\n    |---|---|\n    | < 0.80 | **100%** |\n    | 0.80 – 0.90 | 85% |\n    | 0.90 – 1.00 | 70% '
+
+=== DD section ===
+'| CAUTION | ≤ −12% | ≥ 75% ann. | ≥ 4% | **75%** | DD > −9%, Vol < 65%, VaR < 2.5% | 2 |\n    | RISK_OFF | ≤ −20% | ≥ 100% ann. | ≥ 6% | **45%** | DD > −16%, Vol < 85%, VaR < 4% | 3 |\n    | EMERGENCY | ≤ −35% | ≥ 140% ann. | ≥ 9% | **5%** | DD > −28%, Vol < 120%, VaR < 6% | 5 |\n\n    Ablation: −0.02 Sortino. But in 2018 and 2022 it kept exposure near-zero for weeks during the worst crashes.\n    Drawdown thresholds optimised in walk-forward CV; recovery days and VaR window fixed.\n\n    ---\n    #### Parameters\n    - **Optimised (walk-forward CV):** EMA windows, drawdown/vol/VaR thresholds, vol targ'
+
+=== BEST PARAMS ===
+{
+  "final_sortino": 2.44287958802941,
+  "group_a": {
+    "PRICE_EMA_WINDOW": 28,
+    "COST_EMA_WINDOW": 46,
+    "SIGNAL_EMA_WINDOW": 3,
+    "TREND_FILTER_WINDOW": 360,
+    "RSI_OVERSOLD": 28,
+    "VOL_TARGET": 0.4
+  },
+  "group_b": {
+    "DD_THRESHOLDS": {
+      "CAUTION": -0.05999999999999994,
+      "RISK_OFF": -0.36,
+      "EMERGENCY": -0.53
+    },
+    "VOL_THRESHOLDS": {
+      "CAUTION": 1.3,
+      "RISK_OFF": 2.2,
+      "EMERGENCY": 2.3000000000000003
+    },
+    "VAR_THRESHOLDS": {
+      "CAUTION": 0.04,
+      "RISK_OFF": 0.06,
+      "EMERGENCY": 0.09
+    }
+  },
+  "group_c": {
+    "HASH_RIBBON_CAP_MULT": 0.1
+  }
+}
