@@ -9,7 +9,6 @@ from datetime import datetime
 from config import ProductionCostConfig as Config, HistoricalParameters
 
 
-# Parse once at import time — called for every row in a 3650-day backtest
 _HALVING_SCHEDULE = [
     (datetime.strptime(date_str, '%Y-%m-%d'), reward)
     for date_str, reward in Config.HALVING_SCHEDULE
@@ -17,7 +16,6 @@ _HALVING_SCHEDULE = [
 
 
 def get_block_reward_for_date(date_input) -> float:
-    """Return the block reward for a given date, accounting for halvings."""
     if isinstance(date_input, str):
         date = datetime.strptime(date_input, '%Y-%m-%d')
     elif isinstance(date_input, datetime):
@@ -67,28 +65,38 @@ class BTCProductionCostCalculator:
 
 
 class ProductionCostSeries:
-    """Tracks per-day production costs and exposes an EMA-smoothed series."""
-    
+    """Per-day production cost tracker with EMA smoothing."""
+
     def __init__(self, ema_window: int = Config.EMA_WINDOW):
         self.ema_window = ema_window
+        self._pending: list[dict] = []  # buffer — flushed to self.data on first read
         self.data = pd.DataFrame()
-        
-    def add_daily_data(self, date: str, hashrate_eh_per_s: float) -> dict:
-        """Calculate and store costs for one day. Returns the cost dict."""
+
+    def _flush(self) -> None:
+        if not self._pending:
+            return
+        new_df = pd.DataFrame(self._pending)
+        self._pending = []
+        if self.data.empty:
+            self.data = new_df
+        else:
+            self.data = pd.concat([self.data, new_df], ignore_index=True)
+
+    def add_daily_data(self, date, hashrate_eh_per_s: float) -> dict:
+        """Calculate and buffer costs for one day. Returns the cost dict."""
         calculator = BTCProductionCostCalculator(date=date)
         energy_cost = calculator.calculate_energy_cost_per_btc(hashrate_eh_per_s)
         total_cost = calculator.calculate_total_cost_per_btc(hashrate_eh_per_s)
-        new_row = pd.DataFrame({
-            'date': [pd.to_datetime(date)],
-            'hashrate_eh_per_s': [hashrate_eh_per_s],
-            'energy_cost_usd': [energy_cost],
-            'total_cost_usd': [total_cost],
-            'electricity_price': [calculator.energy_price],
-            'miner_efficiency': [calculator.efficiency],
+
+        self._pending.append({
+            'date': pd.to_datetime(date),
+            'hashrate_eh_per_s': hashrate_eh_per_s,
+            'energy_cost_usd': energy_cost,
+            'total_cost_usd': total_cost,
+            'electricity_price': calculator.energy_price,
+            'miner_efficiency': calculator.efficiency,
         })
-        
-        self.data = pd.concat([self.data, new_row], ignore_index=True)
-        
+
         return {
             'date': date,
             'energy_cost': energy_cost,
@@ -97,19 +105,18 @@ class ProductionCostSeries:
             'electricity_price': calculator.energy_price,
             'miner_efficiency': calculator.efficiency,
         }
-    
+
     def add_from_dataframe(self, df: pd.DataFrame) -> None:
         """Batch-load a DataFrame with 'date' and 'hashrate_eh_per_s' columns."""
         results = []
         for _, row in df.iterrows():
             date = pd.to_datetime(row['date'])
             hashrate = row['hashrate_eh_per_s']
-            
+
             calculator = BTCProductionCostCalculator(date=date)
-            
             energy_cost = calculator.calculate_energy_cost_per_btc(hashrate)
             total_cost = calculator.calculate_total_cost_per_btc(hashrate)
-            
+
             results.append({
                 'date': date,
                 'hashrate_eh_per_s': hashrate,
@@ -118,28 +125,32 @@ class ProductionCostSeries:
                 'electricity_price': calculator.energy_price,
                 'miner_efficiency': calculator.efficiency,
             })
-        
+
         self.data = pd.DataFrame(results)
         self.data.set_index('date', inplace=True)
         self.data.sort_index(inplace=True)
-    
+        self._pending = []   # clear any buffered rows
+
     def smooth_with_ema(self, column: str = 'total_cost_usd') -> pd.Series:
         """Return an EMA-smoothed version of the given column."""
+        self._flush()
         return self.data[column].ewm(span=self.ema_window, adjust=False).mean()
-    
+
     def get_latest_cost(self, smoothed: bool = True) -> float:
         """Return the most recent cost (smoothed by default)."""
+        self._flush()
         if self.data.empty:
             return 0.0
         if smoothed:
             return self.smooth_with_ema().iloc[-1]
         return self.data['total_cost_usd'].iloc[-1]
-    
+
     def summary(self) -> dict:
         """Return a quick-look dict with latest, average, min, max costs."""
+        self._flush()
         if self.data.empty:
             return {}
-        
+
         return {
             'latest_cost': self.data['total_cost_usd'].iloc[-1],
             'latest_cost_smoothed': self.smooth_with_ema().iloc[-1],

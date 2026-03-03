@@ -17,7 +17,6 @@ class Signal(Enum):
 
 
 class BacktestEngine:
-    """Backtest engine implementing the professional combined strategy."""
 
     def __init__(self, initial_capital=100_000, enable_risk_management=True):
         self.initial_capital = initial_capital
@@ -168,7 +167,20 @@ class BacktestEngine:
         prev_price: float | None = None
         _btc_returns: deque = deque(maxlen=PortfolioConfig.VOL_SCALING_WINDOW)
 
-        for idx, row in self.backtest_data.iterrows():
+        col_signal:           list = []
+        col_risk_mode:        list = []
+        col_dd_pct:           list = []
+        col_vol_pct:          list = []
+        col_var_pct:          list = []
+        col_mode_cap:         list = []
+        col_w_signal:         list = []
+        col_w_final_target:   list = []
+        col_w_final_exec:     list = []
+        col_recovery_counter: list = []
+        col_trade_executed:   list = []
+        col_trade_size_weight:list = []
+
+        for _, row in self.backtest_data.iterrows():
             date = row["date"]
             price = float(row["btc_price"])
 
@@ -183,21 +195,19 @@ class BacktestEngine:
 
             w_signal = float(row["signal_weight"])
 
-            # ── RSI overlay ──────────────────────────────────────────────────
+            # RSI oversold boost
             rsi = float(row["rsi"])
             rsi_mult = PortfolioConfig.RSI_BOOST if rsi < PortfolioConfig.RSI_OVERSOLD else 1.0
             w_signal = float(np.clip(w_signal * rsi_mult, 0.0, 1.0))
-            # ─────────────────────────────────────────────────────────────────
 
-            # ── Hash Ribbon overlay (miner capitulation = hr_fast < hr_slow) ──
+            # Hash Ribbon: cut exposure during miner capitulation (fast SMA < slow SMA)
             if PortfolioConfig.HASH_RIBBON_ENABLED:
                 hr_fast_val = float(row["hr_fast"])
                 hr_slow_val = float(row["hr_slow"])
-                if hr_fast_val < hr_slow_val:   # capitulation: miners exiting network
+                if hr_fast_val < hr_slow_val:
                     w_signal = float(np.clip(w_signal * PortfolioConfig.HASH_RIBBON_CAP_MULT, 0.0, 1.0))
-            # ─────────────────────────────────────────────────────────────────
 
-            # ── Vol scaling (target annualised volatility) ─────────────────
+            # Vol scaling: shrink exposure when realised vol exceeds target
             if PortfolioConfig.VOL_TARGET > 0 and len(_btc_returns) >= 5:
                 realized_vol = float(np.std(_btc_returns, ddof=0)) * np.sqrt(252)
                 if realized_vol > 0:
@@ -208,12 +218,10 @@ class BacktestEngine:
             else:
                 vol_scalar = 1.0
             w_signal = float(np.clip(w_signal * vol_scalar, 0.0, 1.0))
-            # ─────────────────────────────────────────────────────────────────
 
-            # ── Trend filter (200-day EMA regime) ───────────────────────────
+            # Trend filter: zero cap when price is below long-term EMA
             trend_ema = float(row["trend_ema"])
             trend_cap = PortfolioConfig.TREND_BEAR_CAP if price < trend_ema else 1.0
-            # ─────────────────────────────────────────────────────────────────
 
             if self.enable_risk_management:
                 risk = self.risk_manager.evaluate(nav=nav_before, daily_return=daily_return)
@@ -245,10 +253,8 @@ class BacktestEngine:
             trade_size_weight = abs(w_exec - current_weight)
             signal = self._signal_label_from_weight(current_weight, w_exec)
 
-            self.portfolio_manager.execute_rebalance(price, w_exec)
-
-            nav_after = self.get_portfolio_value(price)
-            prev_nav = nav_after
+            trade_result = self.portfolio_manager.execute_rebalance(price, w_exec)
+            prev_nav = trade_result["new_portfolio"]["total_value"]
 
             self.portfolio_manager.add_to_history(
                 date.strftime("%Y-%m-%d"),
@@ -258,18 +264,31 @@ class BacktestEngine:
                 signal.value,
             )
 
-            self.backtest_data.at[idx, "signal"] = signal.value
-            self.backtest_data.at[idx, "risk_mode"] = risk["mode"]
-            self.backtest_data.at[idx, "dd_pct"] = risk["dd"] * 100
-            self.backtest_data.at[idx, "vol_pct"] = risk["vol"] * 100
-            self.backtest_data.at[idx, "var_pct"] = risk["var_loss_pct"] * 100
-            self.backtest_data.at[idx, "mode_cap"] = mode_cap
-            self.backtest_data.at[idx, "w_signal"] = w_signal
-            self.backtest_data.at[idx, "w_final_target"] = w_final_target
-            self.backtest_data.at[idx, "w_final_exec"] = w_exec
-            self.backtest_data.at[idx, "recovery_counter"] = risk["recovery_counter"]
-            self.backtest_data.at[idx, "trade_executed"] = trade_executed
-            self.backtest_data.at[idx, "trade_size_weight"] = trade_size_weight
+            col_signal.append(signal.value)
+            col_risk_mode.append(risk["mode"])
+            col_dd_pct.append(risk["dd"] * 100)
+            col_vol_pct.append(risk["vol"] * 100)
+            col_var_pct.append(risk["var_loss_pct"] * 100)
+            col_mode_cap.append(mode_cap)
+            col_w_signal.append(w_signal)
+            col_w_final_target.append(w_final_target)
+            col_w_final_exec.append(w_exec)
+            col_recovery_counter.append(risk["recovery_counter"])
+            col_trade_executed.append(trade_executed)
+            col_trade_size_weight.append(trade_size_weight)
+
+        self.backtest_data["signal"]            = col_signal
+        self.backtest_data["risk_mode"]         = col_risk_mode
+        self.backtest_data["dd_pct"]            = col_dd_pct
+        self.backtest_data["vol_pct"]           = col_vol_pct
+        self.backtest_data["var_pct"]           = col_var_pct
+        self.backtest_data["mode_cap"]          = col_mode_cap
+        self.backtest_data["w_signal"]          = col_w_signal
+        self.backtest_data["w_final_target"]    = col_w_final_target
+        self.backtest_data["w_final_exec"]      = col_w_final_exec
+        self.backtest_data["recovery_counter"]  = col_recovery_counter
+        self.backtest_data["trade_executed"]    = col_trade_executed
+        self.backtest_data["trade_size_weight"] = col_trade_size_weight
 
         return self.portfolio_manager.get_portfolio_dataframe()
 

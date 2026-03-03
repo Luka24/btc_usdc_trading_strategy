@@ -1,19 +1,8 @@
-"""
-Data Fetcher Module: Fetch Historical BTC Data
-===============================================
-Combines data from:
-- CoinGecko API: BTC prices
-- Glassnode/Blockchain.com API: Hashrate data
-- On-chain data: Mining halving dates
-- Caches data locally in data/ folder
-"""
-
 import pandas as pd
 import numpy as np
 import requests
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
-import time
+from typing import Optional
 import os
 import json
 from config import ProductionCostConfig as CostConfig
@@ -27,19 +16,15 @@ except ImportError:
 
 
 class CoinGeckoFetcher:
-    """Fetch BTC historical prices from CoinGecko API or Yahoo Finance"""
-    
     BASE_URL = "https://api.coingecko.com/api/v3"
     DATA_DIR = "data"
     
     @staticmethod
     def _get_cache_path(days: int, currency: str = "usd") -> str:
-        """Get cache file path"""
         return os.path.join(CoinGeckoFetcher.DATA_DIR, f"btc_prices_{days}d_{currency}.csv")
     
     @staticmethod
     def _load_from_cache(days: int) -> Optional[pd.DataFrame]:
-        """Load prices from cache if they exist"""
         cache_path = CoinGeckoFetcher._get_cache_path(days)
         if os.path.exists(cache_path):
             df = pd.read_csv(cache_path)
@@ -50,7 +35,6 @@ class CoinGeckoFetcher:
     
     @staticmethod
     def _save_to_cache(df: pd.DataFrame, days: int) -> None:
-        """Save prices to cache"""
         os.makedirs(CoinGeckoFetcher.DATA_DIR, exist_ok=True)
         cache_path = CoinGeckoFetcher._get_cache_path(days)
         df.to_csv(cache_path, index=False)
@@ -58,26 +42,15 @@ class CoinGeckoFetcher:
     
     @staticmethod
     def fetch_btc_prices_yfinance(days: int = 365) -> pd.DataFrame:
-        """
-        Fetch BTC prices from Yahoo Finance (no API limits for historical data).
-        
-        Args:
-            days (int): Number of days to fetch
-            
-        Returns:
-            pd.DataFrame: DataFrame with columns [date, btc_price]
-        """
         if not YFINANCE_AVAILABLE:
             raise ImportError("yfinance package is required. Install: pip install yfinance")
         
         print(f"[Yahoo Finance] Fetching {days} days of BTC prices...")
         
-        # Calculate date range
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
         
         try:
-            # Fetch BTC-USD data
             btc = yf.Ticker("BTC-USD")
             hist = btc.history(start=start_date.strftime('%Y-%m-%d'), 
                               end=end_date.strftime('%Y-%m-%d'))
@@ -85,7 +58,6 @@ class CoinGeckoFetcher:
             if hist.empty:
                 raise ValueError("No data returned from Yahoo Finance")
             
-            # Convert to required format
             df = pd.DataFrame({
                 'date': hist.index.date,
                 'btc_price': hist['Close'].values
@@ -108,7 +80,6 @@ class CoinGeckoFetcher:
     @staticmethod
     def fetch_btc_prices(days: int = 365, force_refresh: bool = False) -> pd.DataFrame:
         """Fetch historical BTC prices with caching. Uses Yahoo Finance for >365 days, CoinGecko otherwise."""
-        # Try cache first unless force refresh
         if not force_refresh:
             cached = CoinGeckoFetcher._load_from_cache(days)
             if cached is not None:
@@ -175,18 +146,14 @@ class CoinGeckoFetcher:
 
 
 class BlockchainFetcher:
-    """Fetch hashrate data from free APIs (Blockchain.com, Glassnode)"""
-    
     DATA_DIR = "data"
     
     @staticmethod
     def _get_cache_path(days: int) -> str:
-        """Get cache file path"""
         return os.path.join(BlockchainFetcher.DATA_DIR, f"hashrate_{days}d.csv")
     
     @staticmethod
     def _load_from_cache(days: int) -> Optional[pd.DataFrame]:
-        """Load hashrate from cache if exists"""
         cache_path = BlockchainFetcher._get_cache_path(days)
         if os.path.exists(cache_path):
             df = pd.read_csv(cache_path)
@@ -197,7 +164,6 @@ class BlockchainFetcher:
     
     @staticmethod
     def _save_to_cache(df: pd.DataFrame, days: int) -> None:
-        """Save hashrate to cache"""
         os.makedirs(BlockchainFetcher.DATA_DIR, exist_ok=True)
         cache_path = BlockchainFetcher._get_cache_path(days)
         df.to_csv(cache_path, index=False)
@@ -205,18 +171,7 @@ class BlockchainFetcher:
     
     @staticmethod
     def fetch_hashrate(days: int = 365, force_refresh: bool = False) -> pd.DataFrame:
-        """
-        Fetch historical hashrate from Blockchain.com with caching.
-        
-        Uses JSON endpoint from blockchain.info charts API (free, no auth needed).
-        
-        Args:
-            days (int): Number of days to fetch
-            
-        Returns:
-            pd.DataFrame: DataFrame with columns [date, hashrate_eh_per_s]
-        """
-        # Try cache first unless force refresh
+        """Fetch historical hashrate from blockchain.info charts API (free, no auth)."""
         if not force_refresh:
             cached = BlockchainFetcher._load_from_cache(days)
             if cached is not None:
@@ -250,8 +205,7 @@ class BlockchainFetcher:
             if not values:
                 raise ValueError("No data in response")
             
-            # Convert to DataFrame
-            # Note: API returns TH/s (terahashes per second), not H/s
+            # API returns TH/s (terahashes per second)
             df_data = []
             for entry in values:
                 timestamp = entry.get('x')  # Unix timestamp
@@ -297,18 +251,14 @@ class BlockchainFetcher:
 
 
 class DataFetcher:
-    """Main class for fetching combined data with caching"""
-    
     DATA_DIR = "data"
     
     @staticmethod
     def _get_cache_path(days: int) -> str:
-        """Get cache file path for combined data"""
         return os.path.join(DataFetcher.DATA_DIR, f"combined_data_{days}d.csv")
     
     @staticmethod
     def _load_from_cache(days: int) -> Optional[pd.DataFrame]:
-        """Load combined data from cache if exists"""
         cache_path = DataFetcher._get_cache_path(days)
         if os.path.exists(cache_path):
             df = pd.read_csv(cache_path)
@@ -319,7 +269,6 @@ class DataFetcher:
     
     @staticmethod
     def _save_to_cache(df: pd.DataFrame, days: int) -> None:
-        """Save combined data to cache"""
         os.makedirs(DataFetcher.DATA_DIR, exist_ok=True)
         cache_path = DataFetcher._get_cache_path(days)
         df.to_csv(cache_path, index=False)
@@ -329,18 +278,6 @@ class DataFetcher:
     def fetch_combined_data(days: int = 365, 
                            use_real_data: bool = True,
                            force_refresh: bool = False) -> pd.DataFrame:
-        """
-        Fetch combined data (prices + hashrate) with caching support.
-        
-        Args:
-            days (int): Number of days
-            use_real_data (bool): Whether to use real API data
-            force_refresh (bool): If True, bypass cache and fetch fresh data
-            
-        Returns:
-            pd.DataFrame: Combined data
-        """
-        
         print("\n" + "="*70)
         print("DATA FETCHING")
         print("="*70)
@@ -350,7 +287,6 @@ class DataFetcher:
         
         print("\n[MODE] Real historical data\n")
         
-        # Check cache first (unless force refresh)
         if not force_refresh:
             cached_data = DataFetcher._load_from_cache(days)
             if cached_data is not None:
@@ -360,15 +296,12 @@ class DataFetcher:
         else:
             print("   [REFRESH] Bypassing cache, fetching fresh data...")
         
-        # Fetch BTC prices
         df_prices = CoinGeckoFetcher.fetch_btc_prices(days, force_refresh=force_refresh)
         
         print()
         
-        # Fetch hashrate
         df_hashrate = BlockchainFetcher.fetch_hashrate(days, force_refresh=force_refresh)
         
-        # Combine data
         print("\n[MERGE] Combining data...")
         df_prices['date'] = pd.to_datetime(df_prices['date'])
         df_hashrate['date'] = pd.to_datetime(df_hashrate['date'])
@@ -387,10 +320,8 @@ class DataFetcher:
         df_combined['hashrate_eh_per_s'] = df_combined['hashrate_eh_per_s'].ffill()
         df_combined['hashrate_eh_per_s'] = df_combined['hashrate_eh_per_s'].bfill()
         
-        # Drop any remaining rows with NaN (shouldn't happen, but just in case)
         df_combined = df_combined.dropna()
 
-        # Format as required by backtest engine
         df_combined['date'] = pd.to_datetime(df_combined['date']).dt.strftime('%Y-%m-%d')
         df_combined = df_combined[['date', 'btc_price', 'hashrate_eh_per_s']]
 
@@ -406,22 +337,8 @@ class DataFetcher:
 
 
 
-# ============ USAGE EXAMPLE ============
 if __name__ == "__main__":
-    # Fetch real data
     data = DataFetcher.fetch_combined_data(days=30, use_real_data=True)
-    
-    print("\n" + "="*70)
-    print("DATA (FIRST 5 ROWS)")
-    print("="*70)
     print(data.head().to_string())
-    
-    print("\n" + "="*70)
-    print("STATISTICS")
-    print("="*70)
-    print(f"BTC Price - Min: ${data['btc_price'].min():.2f}, "
-          f"Max: ${data['btc_price'].max():.2f}, "
-          f"Average: ${data['btc_price'].mean():.2f}")
-    print(f"Hashrate - Min: {data['hashrate_eh_per_s'].min():.1f} EH/s, "
-          f"Max: {data['hashrate_eh_per_s'].max():.1f} EH/s, "
-          f"Average: {data['hashrate_eh_per_s'].mean():.1f} EH/s")
+    print(f"BTC Price  min/avg/max: ${data['btc_price'].min():.2f} / ${data['btc_price'].mean():.2f} / ${data['btc_price'].max():.2f}")
+    print(f"Hashrate   min/avg/max: {data['hashrate_eh_per_s'].min():.1f} / {data['hashrate_eh_per_s'].mean():.1f} / {data['hashrate_eh_per_s'].max():.1f} EH/s")

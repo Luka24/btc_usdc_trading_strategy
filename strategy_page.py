@@ -51,7 +51,6 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
 
-    # ========== HOW I STARTED ==========
     st.header("0️⃣ How I Started")
 
     st.markdown("""
@@ -84,7 +83,6 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
 
-    # ========== STRATEGY OVERVIEW ==========
     st.header("1️⃣ Strategy Overview & Core Idea")
 
     st.markdown("""
@@ -107,7 +105,7 @@ h2 { color: #3b4637; }
 
     3. **Market psychology.** Institutional traders use mining cost as a valuation floor and step in when price drops near it.
 
-    Academic reference: [CESifo Working Paper — Economics of Bitcoin Mining](https://www.cesifo.org/DocDL/cesifo1_wp10145.pdf)
+    Academic reference: [CESifo Working Paper — Economics of Bitcoin Mining](https://www.ifo.de/DocDL/cesifo1_wp10145.pdf)
 
     ---
 
@@ -141,14 +139,13 @@ h2 { color: #3b4637; }
     | $R \\geq 1.25$ | **0%** | Significantly above cost — exit |
 
     **Why these bands?**
-    - They come from Charles Edwards' "Bitcoin Energy Value" framework — [TradingView indicator by Capriole](https://www.tradingview.com/script/xDMwWgRN-Bitcoin-Energy-Value/). The five ratio thresholds (0.80, 0.90, 1.00, 1.10, 1.25) were **not** optimised by walk-forward CV. Adding five more free parameters to an already small dataset would create a high overfitting risk. The thresholds were set once from the paper and frozen.
+    - They come from Charles Edwards' "Bitcoin Energy Value" framework — [Capriole Charts — Energy Value](https://capriole.com/charts/). The five ratio thresholds (0.80, 0.90, 1.00, 1.10, 1.25) were **not** optimised by walk-forward CV. Adding five more free parameters to an already small dataset would create a high overfitting risk. The thresholds were set once from the paper and frozen.
     - The step structure means the portfolio moves gradually rather than in large jumps.
 
     """)
 
     st.markdown("---")
 
-    # ========== DATA SOURCES ==========
     st.header("2️⃣ Data Sources")
 
     st.markdown("""
@@ -187,7 +184,6 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
 
-    # ========== PRODUCTION COST MODEL ==========
     st.header("3️⃣ Production Cost Model")
 
     st.markdown("""
@@ -347,7 +343,6 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
 
-    # ========== PORTFOLIO MANAGEMENT ==========
     st.header("4️⃣ Portfolio Management")
 
     st.markdown("""
@@ -413,7 +408,6 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
 
-    # ========== SIGNAL FILTERS & ABLATION ==========
     st.header("5️⃣ Signal Filters")
 
     st.markdown("""
@@ -525,7 +519,6 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
 
-    # ========== RISK MANAGEMENT ==========
     st.header("6️⃣ Risk Management Engine")
 
     st.markdown("""
@@ -675,7 +668,6 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
 
-    # ========== PARAMETER TABLE ==========
     st.header("7️⃣ Complete Parameter Reference")
 
     st.markdown("""
@@ -735,7 +727,6 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
 
-    # ========== LIMITATIONS ==========
     st.header("8️⃣ Assumptions & Known Limitations")
 
     st.markdown("""
@@ -778,7 +769,6 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
 
-    # ========== SOURCE INDEX ==========
     st.header("Complete Source Index")
 
     st.markdown("""
@@ -801,10 +791,10 @@ h2 { color: #3b4637; }
     ### Research & Data Sources
 
     **Strategy & Mining Economics**
-    1. Capriole Investments — Bitcoin Energy Value (TradingView indicator): [https://www.tradingview.com/script/xDMwWgRN-Bitcoin-Energy-Value/](https://www.tradingview.com/script/xDMwWgRN-Bitcoin-Energy-Value/)
+    1. Capriole Investments — Bitcoin Energy Value: [https://capriole.com/charts/](https://capriole.com/charts/)
     2. Capriole — Hash Ribbons & Bitcoin Bottoms: [https://capriole.com/hash-ribbons-bitcoin-bottoms/](https://capriole.com/hash-ribbons-bitcoin-bottoms/)
     3. CoinShares — Bitcoin Mining Network Report: [https://coinshares.com/research/bitcoin-mining-network](https://coinshares.com/research/bitcoin-mining-network)
-    4. CESifo WP10145 — Economics of Bitcoin Mining: [https://www.cesifo.org/DocDL/cesifo1_wp10145.pdf](https://www.cesifo.org/DocDL/cesifo1_wp10145.pdf)
+    4. CESifo WP10145 — Economics of Bitcoin Mining: [https://www.ifo.de/DocDL/cesifo1_wp10145.pdf](https://www.ifo.de/DocDL/cesifo1_wp10145.pdf)
 
     **Energy & Hardware Data**
     5. Cambridge CBECI: [https://ccaf.io/cbnsi/cbeci](https://ccaf.io/cbnsi/cbeci)

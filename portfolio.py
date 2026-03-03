@@ -1,4 +1,3 @@
-"""Portfolio manager for BTC/USDC positions."""
 
 import pandas as pd
 import numpy as np
@@ -6,7 +5,6 @@ from config import PortfolioConfig as Config
 
 
 class PortfolioManager:
-    """Manages BTC/USDC allocation and rebalancing."""
 
     def __init__(self,
                  initial_capital: float = Config.INITIAL_PORTFOLIO_USD,
@@ -22,7 +20,6 @@ class PortfolioManager:
         self.usdc_quantity = self.initial_capital
 
     def initialize_holdings(self, btc_price: float, initial_btc_quantity: float) -> None:
-        """Set initial BTC and USDC holdings."""
         btc_value = initial_btc_quantity * btc_price
         if btc_value > self.initial_capital:
             initial_btc_quantity = self.initial_capital / btc_price
@@ -32,7 +29,6 @@ class PortfolioManager:
         self.usdc_quantity = self.initial_capital - btc_value
     
     def determine_target_weight(self, signal_ratio: float) -> float:
-        """Return target BTC weight for the given price/cost ratio."""
         for min_ratio, max_ratio, weight in self.position_table:
             if min_ratio <= signal_ratio < max_ratio:
                 return weight
@@ -44,21 +40,14 @@ class PortfolioManager:
             return self.position_table[0][2]
 
     def apply_weight_change_limit(self, target_weight: float) -> float:
-        """Clamp the weight change to MAX_DAILY_WEIGHT_CHANGE."""
-        weight_change = abs(target_weight - self.current_btc_weight)
-        if weight_change > self.max_daily_change:
-            # Limit to maximum change
-            if target_weight > self.current_btc_weight:
-                allowed_weight = self.current_btc_weight + self.max_daily_change
-            else:
-                allowed_weight = self.current_btc_weight - self.max_daily_change
-            
-            return max(0.0, min(1.0, allowed_weight))
-        
-        return target_weight
+        step = np.clip(
+            target_weight - self.current_btc_weight,
+            -self.max_daily_change,
+            self.max_daily_change,
+        )
+        return float(np.clip(self.current_btc_weight + step, 0.0, 1.0))
     
     def rebalance(self, signal_ratio: float, enforce_limit: bool = True) -> dict:
-        """Compute new BTC weight given signal ratio and daily-change constraint."""
         target_weight = self.determine_target_weight(signal_ratio)
         if enforce_limit:
             actual_weight = self.apply_weight_change_limit(target_weight)
@@ -74,7 +63,6 @@ class PortfolioManager:
         }
     
     def calculate_portfolio_value(self, btc_price: float, btc_quantity: float) -> dict:
-        """Return current portfolio value breakdown."""
         btc_value = btc_quantity * btc_price
         usdc_value = self.usdc_quantity
         total_value = btc_value + usdc_value
@@ -91,7 +79,6 @@ class PortfolioManager:
     
     def execute_rebalance(self, btc_price: float, target_weight: float,
                           fees: float = Config.TRADING_FEES_PERCENT) -> dict:
-        """Execute a rebalance trade and update internal holdings."""
         current_portfolio = self.calculate_portfolio_value(btc_price, self.btc_quantity)
         current_btc_value = current_portfolio['btc_value']
         total_value = current_btc_value + current_portfolio['usdc_value']
@@ -134,7 +121,6 @@ class PortfolioManager:
     
     def add_to_history(self, date: str, btc_price: float, btc_quantity: float,
                        signal_ratio: float, signal: str) -> dict:
-        """Append a portfolio snapshot to history."""
         portfolio_value = self.calculate_portfolio_value(btc_price, btc_quantity)
         
         snapshot = {
@@ -153,7 +139,6 @@ class PortfolioManager:
         return snapshot
     
     def get_portfolio_dataframe(self) -> pd.DataFrame:
-        """Return portfolio history as a DataFrame indexed by date."""
         df = pd.DataFrame(self.portfolio_history)
         df.set_index('date', inplace=True)
         df['price_change_pct'] = df['btc_price'].pct_change() * 100
@@ -161,7 +146,6 @@ class PortfolioManager:
         return df
     
     def calculate_metrics(self, df: pd.DataFrame) -> dict:
-        """Calculate key performance metrics from portfolio history DataFrame."""
         total_return = (df['total_value'].iloc[-1] / df['total_value'].iloc[0] - 1) * 100
         daily_returns = df['total_value'].pct_change().dropna()
         sharpe_ratio = daily_returns.mean() / daily_returns.std() * np.sqrt(252) if daily_returns.std() > 0 else 0

@@ -1,4 +1,5 @@
 import numpy as np
+from collections import deque
 from enum import Enum
 from config import RiskManagementConfig as Config
 
@@ -24,8 +25,8 @@ class RiskManager:
         self.current_mode = RiskMode.NORMAL
         self.recovery_counter = 0
 
-        self.portfolio_values = []
-        self.returns = []
+        self.portfolio_values: deque[float] = deque(maxlen=Config.ROLLING_PEAK_WINDOW)
+        self.returns: deque[float] = deque(maxlen=Config.VAR_LOOKBACK)
 
         self.last_drawdown = 0.0
         self.last_volatility = 0.0
@@ -33,13 +34,9 @@ class RiskManager:
 
     def update_returns(self, daily_return: float) -> None:
         self.returns.append(float(daily_return))
-        if len(self.returns) > Config.VAR_LOOKBACK:
-            self.returns.pop(0)
 
     def _update_nav_window(self, nav: float) -> None:
         self.portfolio_values.append(float(nav))
-        if len(self.portfolio_values) > Config.ROLLING_PEAK_WINDOW:
-            self.portfolio_values.pop(0)
 
     def _rolling_peak(self) -> float:
         if not self.portfolio_values:

@@ -1,10 +1,3 @@
-"""
-BTC Trading Strategy Dashboard - AUTO-UPDATING
-================================================
-Automatically updates data via API and displays charts.
-Last updated: Feb 13, 2026
-"""
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -24,10 +17,8 @@ try:
 except Exception:
     REPORTLAB_AVAILABLE = False
 
-# Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import modules
 import json
 from data_fetcher import DataFetcher
 from backtest import BacktestEngine
@@ -56,7 +47,6 @@ else:
     _BEST_PARAMS_LOADED = False
     _BEST_PARAMS_SORTINO = None
 
-# Page config
 st.set_page_config(
     page_title="Dashboard",
     page_icon="BTC",
@@ -64,7 +54,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Force sidebar to stay collapsed with CSS and JavaScript
 st.markdown(
     """
 <style>
@@ -127,25 +116,16 @@ h4 {
 )
 
 def fetch_and_run_backtest(start_date_str, end_date_str, force_refresh=False, use_risk_management=True):
-    """Fetch fresh data from APIs and run backtest."""
-    
-    # Create cache key
     cache_key = f"{start_date_str}_{end_date_str}_{use_risk_management}"
-    
-    # If force refresh, bypass cache
     if force_refresh:
         return _do_fetch_and_backtest(start_date_str, end_date_str, force_refresh=True, use_risk_management=use_risk_management)
-    
-    # Otherwise use cached version
     return _do_fetch_and_backtest_cached(start_date_str, end_date_str, use_risk_management)
 
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+@st.cache_data(ttl=3600)
 def _do_fetch_and_backtest_cached(start_date_str, end_date_str, use_risk_management=True):
-    """Cached version of fetch and backtest."""
     return _do_fetch_and_backtest(start_date_str, end_date_str, force_refresh=False, use_risk_management=use_risk_management)
 
 def _do_fetch_and_backtest(start_date_str, end_date_str, force_refresh=False, use_risk_management=True):
-    """Actual fetch and backtest implementation."""
     with st.spinner('Fetching fresh data from APIs...'):
         # Calculate required days based on date range
         from datetime import datetime
@@ -190,7 +170,6 @@ def _do_fetch_and_backtest(start_date_str, end_date_str, force_refresh=False, us
 
 
 def calculate_display_metrics(engine, portfolio_df, metrics, rm):
-    """Calculate metrics for display."""
     results_df = engine.backtest_data
     
     return {
@@ -211,17 +190,12 @@ def calculate_display_metrics(engine, portfolio_df, metrics, rm):
 
 
 def build_trades_dataframe(portfolio_df_filtered, results_df_filtered):
-    """Build a portfolio snapshot dataframe with all daily data."""
     try:
-        # Start with portfolio data
         export_df = portfolio_df_filtered.reset_index()
         if 'index' in export_df.columns:
             export_df = export_df.rename(columns={'index': 'date'})
         
-        # Ensure date is datetime
         export_df['date'] = pd.to_datetime(export_df['date'])
-        
-        # Calculate daily changes
         export_df['btc_quantity_change'] = export_df['btc_quantity'].diff()
         export_df['transaction'] = np.where(
             export_df['btc_quantity_change'] > 0, 'BUY',
@@ -229,7 +203,6 @@ def build_trades_dataframe(portfolio_df_filtered, results_df_filtered):
         )
         export_df['trade_value_usd'] = (export_df['btc_quantity_change'].abs() * export_df['btc_price']).round(2)
         
-        # Add signal info if available
         if 'signal' in results_df_filtered.columns and 'signal_ratio' in results_df_filtered.columns:
             try:
                 signal_map = results_df_filtered[['date', 'signal', 'signal_ratio', 'btc_price', 'production_cost_smoothed']].copy()
@@ -242,7 +215,6 @@ def build_trades_dataframe(portfolio_df_filtered, results_df_filtered):
             export_df['signal'] = np.nan
             export_df['signal_ratio'] = np.nan
         
-        # Select and order columns
         cols_to_export = [
             'date', 'btc_price', 'transaction', 'btc_quantity_change', 'trade_value_usd',
             'btc_quantity', 'btc_value', 'usdc_value', 'total_value',
@@ -251,13 +223,11 @@ def build_trades_dataframe(portfolio_df_filtered, results_df_filtered):
         cols_available = [c for c in cols_to_export if c in export_df.columns]
         
         return export_df[cols_available].sort_values('date')
-    except Exception as e:
-        # Return empty dataframe on error
+    except Exception:
         return pd.DataFrame()
 
 
 def create_pdf_report(display_metrics, results_df_filtered, portfolio_df_filtered, start_date, end_date):
-    """Create a simple PDF report and return bytes."""
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
