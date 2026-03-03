@@ -1,6 +1,0 @@
-FAIL: old -12 in tooltip
-OK: new -6 in tooltip
-OK: new -6 chart
-OK: new -36 chart
-OK: new -53 chart
-OK: portfolio title

@@ -1,504 +1,286 @@
-# BTC/USDC Trading Strategy - Fundamental Analysis System
+# BTC/USDC Trading Strategy
 
-A production-ready automated trading system that executes trades on Bitcoin based on fundamental analysis (mining production cost vs. market price ratio). The strategy combines rigorous backtesting, comprehensive risk management, and live dashboard monitoring.
+A systematic **mean-reversion trading strategy** for BTC/USDC based on the ratio of market price to Bitcoin mining production cost. The system includes a professional risk management engine, walk-forward optimised signal overlays, and an interactive Streamlit dashboard.
 
 **[View Live Dashboard →](https://btcusdctradingstrategy-b9chdjulctmnqyappgpjtms.streamlit.app/)**
 
----
-
-## Overview
-
-This project implements a **mean-reversion trading strategy** that:
-- **Analyzes Bitcoin production costs** using real hashrate, electricity prices, and hardware efficiency data
-- **Generates trading targets** from EMA-smoothed Price/Cost ratio bands
-- **Manages risk** with a 4-mode professional state machine (DD, Vol, VaR composite + sticky recovery)
-- **Rebalances daily** between BTC and USDC based on signal strength and risk conditions
-- **Backtests systematically** with real historical data (2015-2026)
-- **Monitors live** via interactive Streamlit dashboard
+For full technical specification and parameter rationale, see [STRATEGY_SPECIFICATION.md](STRATEGY_SPECIFICATION.md).
 
 ---
 
-## Key Features
+## How It Works
 
-### 1. **Fundamental Analysis Engine**
-- Calculates Bitcoin production cost dynamically using:
-  - Historical hashrate (Blockchain.com API)
-  - Historical electricity prices (normalized per region)
-  - Bitcoin mining hardware efficiency curves
-  - Operating expenses and depreciation
-- Adjusts for Bitcoin halving events (2012, 2016, 2020)
-- Generates buy/sell/hold signals based on Price/Cost ratio:
-  - **BUY**: Price < 0.90 × Cost
-  - **HOLD**: 0.90 ≤ Ratio ≤ 1.10
-  - **SELL**: Price > 1.10 × Cost
+The core signal is the **Price/Cost ratio**:
 
-### 2. **Portfolio Management**
-- Dynamic position sizing (0-100% BTC allocation)
-- Constrains daily weight changes to max 25%
-- Uses signal strength (0-1) to scale position size
-- Tracks BTC/USDC holdings separately
-- Maintains portfolio state across 5000+ trading days
+$$R_t = \frac{P_{ema,t}}{C_{ema,t}}$$
 
-### 3. **Risk Management System**
-Four operational risk modes:
-- **NORMAL**: Standard conditions
-- **CAUTION**: Elevated risk (BTC cap 60%)
-- **RISK_OFF**: Defensive mode (BTC cap 30%)
-- **EMERGENCY**: Crisis mode (BTC cap 5%)
+- **$P_{ema}$** — 21-day EMA of BTC price
+- **$C_{ema}$** — 30-day EMA of Bitcoin production cost (from mining model)
+- **$R_t < 1$** → BTC is undervalued → accumulate
+- **$R_t > 1$** → BTC is overvalued → reduce exposure
 
-Risk controls implemented:
-- 252-day rolling peak drawdown monitoring
-- 30-day annualized volatility trigger
-- 1-day VaR (99%) trigger
-- Composite mode = most severe trigger
-- Instant crisis downgrade, sticky recovery (7/5/3 days)
+The step-function output of the ratio is further smoothed with a **14-day EMA** (`SIGNAL_EMA_WINDOW`) to prevent abrupt position jumps at band boundaries.
 
-### 4. **Backtesting Engine**
-- Real API-backed historical data only (synthetic path disabled)
-- Daily rebalancing with accurate commission modeling
-- Portfolio tracking with OHLC price data
-- Comprehensive metrics calculation:
-  - Total return, daily/annual volatility
-  - Sharpe ratio, maximum drawdown
-  - Win rate, trade count, signal distribution
-  - Recovery factor
+The production cost is calculated daily from real hashrate data, year-specific electricity prices ($/kWh), year-specific network miner efficiency (J/TH), halving schedule, and an overhead factor of **1.47×** covering CAPEX, facilities, and operations (~68% electricity, 32% overhead).
 
-### 5. **Live Dashboard**
-Interactive Streamlit interface showing:
-- Real-time backtesting results
-- Strategy metrics and risk indicators
-- Portfolio allocation charts
-- Signal distribution analysis
-- Strategy methodology explanation
-- Performance over multiple timeframes (30d, 90d, 1yr, 3yr, 10yr)
+---
+
+## Position Sizing
+
+| Ratio ($R_{ema}$) | BTC Target | USDC Target |
+|---|---:|---:|
+| < 0.80 | 100% | 0% |
+| 0.80 – 0.90 | 85% | 15% |
+| 0.90 – 1.00 | 70% | 30% |
+| 1.00 – 1.10 | 50% | 50% |
+| 1.10 – 1.25 | 30% | 70% |
+| > 1.25 | 0% | 100% |
+
+**Execution rules:**
+- Max daily rebalance step: **10%** of portfolio
+- Minimum rebalance threshold (dead band): **4%**
+- Trading fee: **0.1%** per trade
+- Rebalancing: once per day at 00:00 UTC
+
+**Signal overlays** (walk-forward validated, applied in this order):
+- **RSI boost**: multiply signal by 1.30× when RSI-14 < 30 (oversold accumulation boost)
+- **Hash Ribbon**: force 0% BTC when 30-day hashrate SMA < 60-day SMA (miner capitulation — full exit)
+- **Vol scaling**: scale to target **40%** annualised volatility (15-day lookback, scalar 20–100%)
+- **Trend filter**: force 0% BTC when price < 250-day EMA (full exit in bear market — applied last)
+
+---
+
+## Risk Management
+
+A 4-mode state machine with **3 independent triggers** (Drawdown, Volatility, Value-at-Risk).  
+The active mode is `max(DD_mode, Vol_mode, VaR_mode)` (most severe wins).  
+**Entry is instant (1 breach = immediate downgrade). Recovery requires all 3 conditions simultaneously for N consecutive days — any single breach resets the counter to 0.**
+
+### Mode Caps
+
+| Mode | BTC Cap | USDC Floor |
+|---|---:|---:|
+| NORMAL | 100% | 0% |
+| CAUTION | 75% | 25% |
+| RISK_OFF | 45% | 55% |
+| EMERGENCY | 5% | 95% |
+
+### Entry Thresholds
+
+| Mode | Drawdown | Ann. Volatility | VaR 99% (1-day) |
+|---|---:|---:|---:|
+| CAUTION | ≤ −12% | ≥ 75% | ≥ 4% |
+| RISK_OFF | ≤ −20% | ≥ 100% | ≥ 6% |
+| EMERGENCY | ≤ −35% | ≥ 140% | ≥ 9% |
+
+### Recovery Thresholds & Days
+
+| Mode | DD Recovery | Vol Recovery | VaR Recovery | Days |
+|---|---:|---:|---:|---:|
+| CAUTION → NORMAL | > −9% | < 65% | < 2.5% | 2 |
+| RISK_OFF → CAUTION | > −16% | < 85% | < 4% | 3 |
+| EMERGENCY → RISK_OFF | > −28% | < 120% | < 6% | 5 |
+
+Drawdown uses a **252-day rolling peak** (not all-time), which prevents permanent lockout.
 
 ---
 
 ## Project Structure
 
 ```
-btc_trading_strategy/
+btc_usdc_trading_strategy/
 │
 ├── README.md                        # This file
+├── STRATEGY_SPECIFICATION.md        # Full strategy spec & parameter rationale
+├── config.py                        # All parameters (single source of truth)
+├── requirements.txt
+├── .gitignore
 │
-├── Core Modules
-├── backtest.py                      # Backtesting engine & signal generation
-├── risk_manager.py                  # Risk control & position scaling
-├── portfolio.py                     # Portfolio state management
-├── production_cost.py               # Bitcoin cost calculation (mining model)
+├── Core
+│   ├── backtest.py                  # Backtesting engine & signal generation
+│   ├── risk_manager.py              # 4-mode risk state machine
+│   ├── portfolio.py                 # Portfolio state & metrics
+│   └── production_cost.py          # BTC mining cost model
 │
-├── Data & Configuration
-├── data_fetcher.py                  # API integration (CoinGecko, Blockchain.com)
-├── config.py                        # Strategy parameters & configuration
+├── Data
+│   ├── data_fetcher.py              # CoinGecko + Blockchain.com API fetcher
+│   └── data/                        # Cached CSV files (gitignored)
 │
-├── User Interface
-├── dashboard.py                     # Streamlit web dashboard
-├── strategy_page.py                 # Strategy methodology page
-├── main.py                          # Command-line interface
+├── Interface
+│   ├── dashboard.py                 # Streamlit entrypoint (main page)
+│   ├── strategy_page.py             # Streamlit strategy methodology page
+│   ├── main.py                      # CLI entrypoint
+│   └── pages/
+│       └── 2_Strategy_and_Methodology.py
 │
-├── Testing & Optimization
-├── optimization/
-│   └── ml_parameter_optimizer.py    # ML parameter tuning (experimental)
-├── tests/
-│   └── [test scripts]               # Unit tests and integration tests
+├── Optimization
+│   └── optimization/
+│       ├── optuna_optimizer.py      # 3-phase Bayesian optimisation (Optuna)
+│       ├── ml_parameter_optimizer.py
+│       ├── walk_forward.py          # Walk-forward validation
+│       ├── ablation_study.py        # Feature importance ablation
+│       ├── phase4_validation.py     # Final OOS validation
+│       └── best_params.json         # Last optimised parameters
 │
-├── Data Storage
-├── data/
-│   ├── btc_prices_*.csv             # BTC price history (various timeframes)
-│   ├── hashrate_*.csv               # Mining hashrate data
-│   └── combined_data_*.csv          # Pre-calculated cost + price data
-│
-└── Results
-    ├── backtest_results_*.csv       # Timestamped backtest outputs
-    └── strategy_report_*.txt        # Generated analysis reports
+└── Tests
+    └── tests/
+        ├── test_live_data_smoke.py
+        └── test_pro_risk_modes.py
 ```
 
 ---
 
-## Installation & Setup
+## Quick Start
 
 ### Prerequisites
 - Python 3.10+
-- pip/conda for package management
-
-### Quick Start
 
 ```bash
-# Clone repository
 git clone https://github.com/Luka24/btc_usdc_trading_strategy.git
-cd btc_trading_strategy
+cd btc_usdc_trading_strategy
 
-# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
+```
 
-# Run dashboard (recommended)
+### Run Dashboard
+```bash
 streamlit run dashboard.py
-
-# Or run CLI version
-python main.py
 ```
+Opens at `http://localhost:8501`.
 
-### Dependencies
-See `requirements.txt` for full list. Key packages:
-- **pandas, numpy**: Data processing
-- **streamlit**: Web dashboard
-- **requests**: API calls
-- **matplotlib, seaborn**: Visualizations
-- **ta-lib** (optional): Technical indicators
-
----
-
-## Strategy Parameters
-
-All parameters are configurable in `config.py`:
-
-```python
-# Signal Thresholds
-RATIO_BUY_THRESHOLD = 0.90        # Buy below this price/cost ratio
-RATIO_SELL_THRESHOLD = 1.10       # Sell above this ratio
-SIGNAL_EMA_WINDOW = 30            # Signal smoothing window
-
-# Risk Limits
-MAX_DRAWDOWN_THRESHOLD = -0.30    # Emergency trigger
-VOLATILITY_HIGH_THRESHOLD = 0.80  # Risk-off threshold
-VAR_LIMIT_PERCENT = -0.04         # Daily VaR limit
-
-# Position Management
-MAX_DAILY_WEIGHT_CHANGE = 0.25    # Max 25% allocation change per day
-INITIAL_PORTFOLIO_USD = 100_000   # Starting capital
-
-# Mining Model Parameters
-OPEX_PERCENTAGE = 0.30            # Operating costs
-HARDWARE_DEPRECIATION = 0.25      # Annual depreciation
-```
-
----
-
-## Running Backtests
-
-### Via Dashboard
-1. Open [live dashboard](https://btcusdctradingstrategy-b9chdjulctmnqyappgpjtms.streamlit.app/)
-2. Select timeframe (30d to 10yr)
-3. Click "Run Backtest" button
-4. View results immediately
-
-### Via CLI
+### Run CLI Backtest
 ```bash
 python main.py
 ```
 
-Output includes:
-- Comprehensive strategy report (saved to `results/`)
-- Performance charts (PNG files)
-- Detailed metrics CSV
+---
 
-### Custom Backtests
+## Key Parameters (`config.py`)
+
 ```python
-from backtest import BacktestEngine
-from data_fetcher import DataFetcher
+# ── Signal ────────────────────────────────────────────────────────────────
+SignalConfig.PRICE_EMA_WINDOW    = 21     # EMA window for BTC price smoothing
+SignalConfig.COST_EMA_WINDOW     = 30     # EMA window for production cost smoothing
+SignalConfig.SIGNAL_EMA_WINDOW   = 14     # additional EMA on step-function output
 
-# Fetch data
-data = DataFetcher.fetch_combined_data(days=365, use_real_data=True)
+# ── Position bands ────────────────────────────────────────────────────────
+# (R_low, R_high, BTC_weight)
+SignalConfig.POSITION_TABLE = [
+    (0.00, 0.80, 1.00),   # strong accumulation
+    (0.80, 0.90, 0.85),   # aggressive buy
+    (0.90, 1.00, 0.70),   # moderate buy
+    (1.00, 1.10, 0.50),   # neutral
+    (1.10, 1.25, 0.30),   # defensive
+    (1.25, 10.0, 0.00),   # full de-risk
+]
 
-# Run backtest
-engine = BacktestEngine(initial_capital=100_000)
-engine.add_from_dataframe(data)
-portfolio = engine.run_backtest(initial_btc_quantity=2.0)
+# ── Portfolio ─────────────────────────────────────────────────────────────
+PortfolioConfig.MAX_DAILY_WEIGHT_CHANGE   = 0.10   # 10% max step per day
+PortfolioConfig.MIN_REBALANCE_THRESHOLD   = 0.04   # 4% dead band (no trade below)
+PortfolioConfig.INITIAL_PORTFOLIO_USD     = 100_000
+PortfolioConfig.TRADING_FEES_PERCENT      = 0.001  # 0.1% per trade
 
-# Get metrics
-metrics = engine.calculate_metrics()
-print(f"Return: {metrics['total_return_pct']:.2f}%")
+# ── Overlays ──────────────────────────────────────────────────────────────
+PortfolioConfig.TREND_FILTER_WINDOW      = 250     # bear market EMA window
+PortfolioConfig.TREND_BEAR_CAP           = 0.00    # full exit below trend EMA
+PortfolioConfig.RSI_WINDOW               = 14
+PortfolioConfig.RSI_OVERSOLD             = 30
+PortfolioConfig.RSI_BOOST                = 1.30    # +30% signal boost when oversold
+PortfolioConfig.VOL_TARGET               = 0.40    # target 40% annualised vol
+PortfolioConfig.VOL_SCALING_WINDOW       = 15
+PortfolioConfig.VOL_SCALE_MIN            = 0.20
+PortfolioConfig.VOL_SCALE_MAX            = 1.00
+PortfolioConfig.HASH_RIBBON_ENABLED      = True
+PortfolioConfig.HASH_RIBBON_FAST         = 30      # fast hashrate SMA window
+PortfolioConfig.HASH_RIBBON_SLOW         = 60      # slow hashrate SMA window
+PortfolioConfig.HASH_RIBBON_CAP_MULT     = 0.00    # 0% BTC on miner capitulation
+
+# ── Risk ──────────────────────────────────────────────────────────────────
+RiskManagementConfig.MODE_CAPS = {
+    "NORMAL": 1.00, "CAUTION": 0.75, "RISK_OFF": 0.45, "EMERGENCY": 0.05
+}
+RiskManagementConfig.DD_THRESHOLDS  = {"CAUTION": -0.12, "RISK_OFF": -0.20, "EMERGENCY": -0.35}
+RiskManagementConfig.VOL_THRESHOLDS = {"CAUTION":  0.75, "RISK_OFF":  1.00, "EMERGENCY":  1.40}
+RiskManagementConfig.VAR_THRESHOLDS = {"CAUTION":  0.04, "RISK_OFF":  0.06, "EMERGENCY":  0.09}
+RiskManagementConfig.RECOVERY_THRESHOLDS = {
+    "CAUTION":   {"dd": -0.09, "vol": 0.65, "var": 0.025},
+    "RISK_OFF":  {"dd": -0.16, "vol": 0.85, "var": 0.04},
+    "EMERGENCY": {"dd": -0.28, "vol": 1.20, "var": 0.06},
+}
+RiskManagementConfig.RECOVERY_DAYS = {"CAUTION": 2, "RISK_OFF": 3, "EMERGENCY": 5}
+
+# ── Backtest ─────────────────────────────────────────────────────────────
+BacktestConfig.START_DATE = "2016-02-01"
+BacktestConfig.END_DATE   = "2026-02-01"
 ```
 
 ---
 
-## Performance Examples
+## Optimisation
 
-### 90-Day Backtest (Recent)
-- **Total Return**: +25.10%
-- **Sharpe Ratio**: 1.13
-- **Max Drawdown**: -25.82%
-- **Win Rate**: 67.8%
-- **Signal Distribution**: 97.8% BUY, 2.2% HOLD, 0% SELL
+Parameters were tuned using a 3-phase Bayesian optimisation pipeline (`optimization/optuna_optimizer.py`):
 
-### With Risk Management ON vs OFF
-- **WITH controls**: +25.10% return, −25.82% max DD, Sharpe 1.13
-- **WITHOUT controls**: +20.25% return, −26.08% max DD, Sharpe 0.98
-- **Risk actions triggered**: 7 take-profits, 6 trailing stops, 1 stop-loss
+1. **Phase A** — Signal parameters (EMA windows, position bands)
+2. **Phase B** — Risk thresholds (DD / Vol / VaR entries & recovery)
+3. **Phase C** — Overlays (trend filter, vol scaling, hash ribbon, RSI)
 
-### Long-Term (3650 days / 10 years)
-- Consistent outperformance in uptrend periods
-- Downside protection during bear markets
-- Recovery within 2-3 months of major corrections
+Validated with walk-forward analysis (`optimization/walk_forward.py`) and feature ablation (`optimization/ablation_study.py`). Final out-of-sample test in `optimization/phase4_validation.py`. Best parameters serialised to `optimization/best_params.json`.
+
+**Objective:** Maximise Sharpe Ratio, subject to Max Drawdown < −30%.
 
 ---
 
-## How to Use Each Module
+## Production Cost Model
 
-### `backtest.py` - Core Engine
-Backtests trading strategy on historical data
-```python
-engine = BacktestEngine()
-engine.add_daily_data(date, btc_price, hashrate)
-portfolio_df = engine.run_backtest()
-metrics = engine.calculate_metrics()
-```
-
-### `risk_manager.py` - Risk Control
-Monitors and adjusts positions based on risk
-```python
-rm = RiskManager()
-rm.update_returns(daily_return)
-mode = rm.get_risk_mode(drawdown, volatility, var_exceeded)
-adjusted_weight = rm.adjust_weight(target_weight, mode)
-```
-
-### `portfolio.py` - Position Management
-Manages BTC/USDC allocation
-```python
-pm = PortfolioManager()
-target_weight = pm.determine_target_weight(price_cost_ratio)
-allowed_weight = pm.apply_weight_change_limit(target_weight)
-```
-
-### `production_cost.py` - Mining Model
-Calculates Bitcoin production costs
-```python
-calc = BTCProductionCostCalculator()
-cost = calc.get_production_cost_for_date(date, hashrate)
-```
-
-### `data_fetcher.py` - Data Integration
-Fetches and caches market & mining data
-```python
-data = DataFetcher.fetch_combined_data(days=365, use_real_data=True)
-```
+| Year | Electricity ($/kWh) | Avg Efficiency (J/TH) | Block Reward |
+|---|---:|---:|---:|
+| 2016 | 0.10 | 250 | 12.5 BTC |
+| 2017 | 0.10 | 150 | 12.5 BTC |
+| 2018 | 0.08 | 110 | 12.5 BTC |
+| 2019 | 0.07 | 85 | 12.5 BTC |
+| 2020 | 0.065 | 60 | 6.25 BTC (halving 11 May) |
+| 2021 | 0.065 | 50 | 6.25 BTC |
+| 2022 | 0.07 | 45 | 6.25 BTC (energy crisis) |
+| 2023 | 0.065 | 38 | 6.25 BTC |
+| 2024 | 0.062 | 30 | 3.125 BTC (halving 20 Apr) |
+| 2025 | 0.06 | 24 | 3.125 BTC |
+| 2026 | 0.06 | 22 | 3.125 BTC |
 
 ---
 
-## Dashboard Features
+## Data
 
-**Live Dashboard URL**: [https://btcusdctradingstrategy-b9chdjulctmnqyappgpjtms.streamlit.app/](https://btcusdctradingstrategy-b9chdjulctmnqyappgpjtms.streamlit.app/)
+Historical data is fetched via:
+- **BTC price** — CoinGecko API (daily close, USD)
+- **Hashrate** — Blockchain.com API (EH/s, daily)
 
-### Sections
-1. **📊 Dashboard** - Main metrics, real-time backtest results
-2. **📈 Strategy & Methodology** - Explanation of signals, risk management, trading logic
-3. **⚙️ Settings** - Adjust parameters and re-run backtests
-
-### Interactive Features
-- Timeframe selector (30d, 90d, 1yr, 3yr, 10yr)
-- Fetch live data or use cached data
-- Download strategy reports (TXT/CSV)
-- View allocation charts, returns distribution
-- Compare metrics across periods
+Cached CSV files are stored in `data/` with filenames encoding the period length (e.g. `combined_data_3650d.csv`). The backtest covers **2016-02-01 to 2026-02-01** (~10 years, 2 full halving cycles, multiple bull/bear regimes).
 
 ---
 
-## Signal Generation Logic
-
-The strategy generates signals based on **Production Cost vs Market Price**:
+## Dependencies
 
 ```
-Signal Ratio = BTC Price / Production Cost
-
-Buy Signal:   Ratio < 0.90  (Price below 90% of cost)
-Hold Signal:  0.90 ≤ Ratio ≤ 1.10  (Price near cost)
-Sell Signal:  Ratio > 1.10  (Price above 110% of cost)
-
-Signal Strength = Smoothed with 30-day EMA
-Position Size = Base allocation × Signal Strength (0-100%)
+pandas, numpy        — data processing
+streamlit==1.53.1    — web dashboard
+plotly, altair       — interactive charts
+matplotlib           — static plots
+requests             — API calls
+yfinance             — market data fallback
+optuna               — Bayesian optimisation
+scikit-learn         — ML utilities
+reportlab            — PDF export
 ```
-
-**Rationale**: When price drops significantly below production cost, miners exit (supply shock incoming). Conversely, above-cost prices attract new mining capacity (supply expansion).
-
----
-
-## Risk Management Strategy
-
-### Drawdown Control
-- Triggers `CAUTION` mode at -10% drawdown
-- Triggers `RISK_OFF` mode at -20% drawdown
-- Triggers `EMERGENCY` mode at -30% drawdown
-- All-cash mode if drawdown exceeds -30%
-
-### Volatility-Based Scaling
-- Scales position sizes inversely to volatility
-- Higher volatility = smaller positions
-- Measured using 30-day rolling standard deviation
-
-### Stop-Loss & Take-Profit
-- Stop-loss: Exit at −12% loss per trade
-- Take-profit: Exit at +20% profit per trade
-- Trailing stops: Lock in gains, limit downside
-
-### Consecutive Loss Protection
-- Tracks losing trades
-- Reduces position after 2+ consecutive losses
-- Resets after profitable trade
-
----
-
-## Data Sources
-
-### Real-Time Data APIs
-- **CoinGecko**: BTC/USD price history (free tier)
-- **Blockchain.com**: Mining hashrate (free)
-- **Glassnode**: On-chain metrics (optional premium)
-
-### Data Caching
-- Pre-calculated data stored in `data/` folder
-- Speeds up backtest initialization
-- Configurable refresh interval
-
-### Historical Coverage
-- Price data: 2015-2026 (11+ years)
-- Hashrate data: 2009-2026 (complete Bitcoin history)
-- Bitcoin halvings: Hard-coded schedule (2012, 2016, 2020, 2024)
-
----
-
-## Testing
-
-Run all tests:
-```bash
-python -m pytest tests/
-```
-
-Individual test scripts in `tests/` folder cover:
-- Signal generation accuracy
-- Portfolio rebalancing logic
-- Risk management triggers
-- Cost calculation validation
-- Data fetching & caching
-
----
-
-## Advanced Usage
-
-### Custom Backtests
-Modify `BacktestConfig` in `config.py` to test:
-- Different timeframes
-- Alternative position sizing
-- Custom signal thresholds
-- Various risk limits
-
-### Parameter Optimization
-Use `optimization/ml_parameter_optimizer.py` for:
-- Grid search over parameter space
-- Genetic algorithm optimization
-- Hyperparmeter tuning (experimental)
-
-### Integration
-Ready to integrate with:
-- Live trading APIs (Kraken, Binance, Coinbase)
-- Broker webhooks for alerts
-- Discord/Slack notifications
-- Portfolio monitoring systems
-
----
-
-## Code Quality
-
-All modules refactored for clarity and performance:
-- **backtest.py**: 50% code reduction (removed verbose AI-style docs)
-- **risk_manager.py**: 45% code reduction
-- **main.py**: 60% code reduction
-- All functionality preserved, code looks human-written
-
----
-
-## Performance Considerations
-
-- **Backtesting**: ~0.5 seconds per 1000 days
-- **Data fetching**: ~30 seconds for full API refresh (cached)
-- **Dashboard**: Sub-second response times with cache
-- **Memory**: ~50MB for 10-year backtest
-
----
-
-## Troubleshooting
-
-### Dashboard won't load
-```bash
-# Reinstall streamlit
-pip install --upgrade streamlit
-streamlit run dashboard.py
-```
-
-### Data fetching fails
-```python
-# Use cached data instead
-data = DataFetcher.fetch_combined_data(use_real_data=False)
-```
-
-### Import errors
-```bash
-# Ensure all dependencies installed
-pip install -r requirements.txt
-# Or manually install missing module
-pip install [module_name]
-```
-
----
-
-## Contributing
-
-Improvements welcome! Areas for enhancement:
-- [ ] Machine learning signal prediction
-- [ ] Multi-asset strategy (ETH, BNB, etc.)
-- [ ] Miner sentiment analysis integration
-- [ ] On-chain metrics integration
-- [ ] Dynamic parameter optimization
-- [ ] Paper trading mode
-- [ ] Live trading automation
 
 ---
 
 ## Disclaimer
 
-**This is an educational/research project.** Past performance does not guarantee future results. Use at your own risk and always:
-- Start with paper trading
-- Use small capital initially
-- Monitor positions actively
-- Keep emergency stops in place
-
-This system is NOT financial advice. Consult professionals before deploying capital.
-
----
-
-## License
-
-This project is provided as-is for educational purposes.
-
----
-
-## Author
-
-Luka24 (GitHub)
-
-**Repository**: [github.com/Luka24/btc_usdc_trading_strategy](https://github.com/Luka24/btc_usdc_trading_strategy)
-
-**Live Dashboard**: [btcusdctradingstrategy-b9chdjulctmnqyappgpjtms.streamlit.app](https://btcusdctradingstrategy-b9chdjulctmnqyappgpjtms.streamlit.app/)
-
----
-
-## Quick Reference
-
-| Component | File | Purpose |
-|-----------|------|---------|
-| Signal Generation | backtest.py | Creates BUY/HOLD/SELL signals |
-| Risk Control | risk_manager.py | Manages drawdown, volatility, VaR |
-| Portfolio State | portfolio.py | Tracks BTC/USDC allocation |
-| Cost Calculation | production_cost.py | Mining production cost model |
-| Data Integration | data_fetcher.py | Fetches price & hashrate data |
-| Configuration | config.py | Strategy parameters |
-| Web Interface | dashboard.py + strategy_page.py | Streamlit dashboard |
-| CLI | main.py | Command-line interface |
-
----
-
-**Last Updated**: February 5, 2026
+This is an educational/research project. Past performance does not guarantee future results.
+This is NOT financial advice.

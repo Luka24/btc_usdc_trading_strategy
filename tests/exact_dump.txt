@@ -1,8 +1,0 @@
-=== TOOLTIP ===
-'100\\n"\n            "The risk engine activates: CAUTION at −12%, RISK_OFF at −20%, EMERGENCY at −35%."\n        )\n    )\n\nwith col5:\n    st.met'
-
-=== DRAWDOWN CHART DESC ===
-'esholds are marked by the drawdown levels they monitor:\n- **CAUTION** activates at −12% → caps BTC exposure at 75%\n- **RISK_OFF** activates at −20% → caps BTC exposure at 45%\n- **EMERGENCY** activates at −35% → caps BTC exposure at 5%\n\nA smaller max drawdown relative to buy-and-hold means a shorter recovery path back to a new\nhigh-water mark — which directly'
-
-=== PORTFOLIO SECTION ===
-'# 2. Total Portfolio Value\nst.markdown("""\nStrategy equity curve (green) vs. buy-and-hold BTC benchmark (blue dotted).\n\nThe strategy adjusts allocation continuously, not in discrete blocks. It lags the benchmark in strong bull runs (rarely at 100% at the top), but takes significantly less drawdown i'

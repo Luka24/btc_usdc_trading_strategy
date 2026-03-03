@@ -1,13 +1,33 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Logs & debug dumps
 *.log
+tests/*.txt
+streamlit_out.txt
+streamlit_err.txt
+
+# Editor / OS
 .DS_Store
 .vscode/
+
+# Generated outputs
 results/
+*.png
+
+# Data files (large, fetched at runtime)
 data/
 *.csv
-*.png
+
+# Jupyter
 *.ipynb_checkpoints/
+
+# Optuna / SQLite databases
+*.db
+
+# Notebook
+*.ipynb
