@@ -410,9 +410,15 @@ try:
     if len(results_df_filtered) == 0 or len(portfolio_df_filtered) == 0:
         st.error("Sorry, no data for this time!")
         st.stop()
-    
+
+    # Normalize total_value so the selected period always starts at $100,000.
+    # The backtest runs from 2017, so without normalization a 4-year window
+    # would show the portfolio at whatever it had grown to by that start date.
+    _norm = engine.initial_capital / portfolio_df_filtered['total_value'].iloc[0]
+    portfolio_df_filtered['total_value'] = portfolio_df_filtered['total_value'] * _norm
+
     # Recalculate metrics for filtered period
-    initial_value = portfolio_df_filtered['total_value'].iloc[0]
+    initial_value = portfolio_df_filtered['total_value'].iloc[0]  # always engine.initial_capital
     final_value = portfolio_df_filtered['total_value'].iloc[-1]
     total_return = ((final_value - initial_value) / initial_value) * 100
     
@@ -759,7 +765,7 @@ The strategy adjusts allocation continuously, not in discrete blocks. It lags th
 
 fig_portfolio = go.Figure()
 
-initial_value = portfolio_df_filtered['total_value'].iloc[0]
+initial_value = engine.initial_capital
 initial_price = results_df_filtered['btc_price'].iloc[0]
 buy_and_hold_btc = initial_value / initial_price
 buy_and_hold_values = buy_and_hold_btc * results_df_filtered['btc_price']
