@@ -67,16 +67,30 @@ def load_and_apply_best_params() -> dict[str, Any]:
 
 
 def perf_metrics(value_series: pd.Series) -> dict:
-    """Compute Sharpe, Sortino, Calmar, MaxDD, AnnReturn from daily total-value series."""
+    """Compute Sharpe, Sortino, Calmar, MaxDD, AnnReturn from daily total-value series.
+
+    Annualisation factor: 365 — BTC trades every calendar day (no weekend closure),
+    so 365 is the correct period count, not the equity-market convention of 252.
+
+    Sharpe  = mean(r) / std(r, ddof=1) * sqrt(365)        [excess over rf=0]
+    Sortino = mean(r) / semi_dev       * sqrt(365)
+      semi_dev = sqrt( mean( min(r, 0)^2 ) )               [population est., / N]
+      This is Sortino & Forsey (1996) / empyrical definition:
+      all N days are in the denominator — positive days contribute 0 to the
+      sum but still increase N, giving a conservative, unbiased estimate.
+    """
     rets = value_series.pct_change().dropna()
     if len(rets) < 5:
         return dict(sharpe=0.0, sortino=0.0, calmar=0.0, maxdd=0.0, ann_return=0.0)
 
-    ann_ret = (value_series.iloc[-1] / value_series.iloc[0]) ** (252 / len(rets)) - 1
-    sharpe  = float(rets.mean() / rets.std() * np.sqrt(252)) if rets.std() > 0 else 0.0
+    ANN = cfg.MetricsConfig.ANNUAL_TRADING_DAYS  # 365
 
-    neg = rets[rets < 0]
-    sortino = float(rets.mean() / neg.std() * np.sqrt(252)) if len(neg) > 1 and neg.std() > 0 else 0.0
+    ann_ret = (value_series.iloc[-1] / value_series.iloc[0]) ** (ANN / len(rets)) - 1
+    sharpe  = float(rets.mean() / rets.std() * np.sqrt(ANN)) if rets.std() > 0 else 0.0
+
+    # Semi-deviation: population estimator (/ N) as per Sortino & Forsey (1996).
+    semi_dev = np.sqrt((np.minimum(rets, 0.0) ** 2).mean())  # mean = sum/N
+    sortino  = float(rets.mean() / semi_dev * np.sqrt(ANN)) if semi_dev > 0 else 0.0
 
     cummax = value_series.cummax()
     maxdd  = float(((value_series - cummax) / cummax).min())

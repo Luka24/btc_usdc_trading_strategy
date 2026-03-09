@@ -1,7 +1,7 @@
 
 import pandas as pd
 import numpy as np
-from config import PortfolioConfig as Config
+from config import PortfolioConfig as Config, MetricsConfig
 
 
 class PortfolioManager:
@@ -146,23 +146,34 @@ class PortfolioManager:
         return df
     
     def calculate_metrics(self, df: pd.DataFrame) -> dict:
-        total_return = (df['total_value'].iloc[-1] / df['total_value'].iloc[0] - 1) * 100
-        daily_returns = df['total_value'].pct_change().dropna()
-        sharpe_ratio = daily_returns.mean() / daily_returns.std() * np.sqrt(252) if daily_returns.std() > 0 else 0
+        ANN   = MetricsConfig.ANNUAL_TRADING_DAYS          # 365 — BTC trades every calendar day
+        rf    = MetricsConfig.RISK_FREE_ANNUAL / ANN        # daily risk-free rate (default 0)
 
-        # Sortino: penalises only downside volatility
-        downside_returns = daily_returns[daily_returns < 0]
-        downside_std = downside_returns.std()
-        sortino_ratio = daily_returns.mean() / downside_std * np.sqrt(252) if downside_std > 0 else 0
+        total_return  = (df['total_value'].iloc[-1] / df['total_value'].iloc[0] - 1) * 100
+        daily_returns = df['total_value'].pct_change().dropna()
+        excess        = daily_returns - rf                  # excess over risk-free (rf=0 → same as returns)
+
+        # Sharpe: excess return / total volatility, annualised
+        sharpe_ratio = float(excess.mean() / excess.std() * np.sqrt(ANN)) if excess.std() > 0 else 0.0
+
+        # Sortino: downside semi-deviation per Sortino & Forsey (1996) and empyrical.
+        # MAR = rf (minimum acceptable return).  For each day compute min(r_t - MAR, 0),
+        # positive days contribute 0.  Divide by N (full sample), not N-1: this is
+        # the population estimator Sortino originally specified and what all major
+        # financial libraries (empyrical, QuantLib) use.
+        n             = len(excess)
+        downside_sq   = np.minimum(excess, 0.0) ** 2        # min(r_t - rf, 0)^2
+        semi_dev      = np.sqrt(downside_sq.mean()) if n > 0 else 0.0   # mean = sum/N
+        sortino_ratio = float(excess.mean() / semi_dev * np.sqrt(ANN)) if semi_dev > 0 else 0.0
 
         running_max = df['total_value'].cummax()
-        drawdown = (df['total_value'] - running_max) / running_max
+        drawdown    = (df['total_value'] - running_max) / running_max
         max_drawdown = drawdown.min() * 100
 
         # Calmar: CAGR / |MaxDrawdown|
-        n_years = len(daily_returns) / 252
-        cagr = ((df['total_value'].iloc[-1] / df['total_value'].iloc[0]) ** (1 / n_years) - 1) * 100 if n_years > 0 else 0
-        calmar_ratio = cagr / abs(max_drawdown) if max_drawdown != 0 else 0
+        n_years = len(daily_returns) / ANN
+        cagr    = ((df['total_value'].iloc[-1] / df['total_value'].iloc[0]) ** (1 / n_years) - 1) * 100 if n_years > 0 else 0.0
+        calmar_ratio = cagr / abs(max_drawdown) if max_drawdown != 0 else 0.0
 
         btc_trades = (df['btc_weight'].diff().abs() > 1e-6).sum()
         

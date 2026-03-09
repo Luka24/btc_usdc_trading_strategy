@@ -179,6 +179,29 @@ class RiskManagementConfig:
     }
 
 
+class MetricsConfig:
+    """
+    Performance metric calculation settings.
+
+    BTC trades 24/7, 365 days a year — no weekend closure unlike equity markets.
+    The correct annualisation factor is therefore 365, not the equity-market
+    convention of 252 (trading days only).
+
+    Risk-free rate is set to 0.0.  For a BTC/USDC strategy the "cash" leg is
+    USDC, which may earn a small yield, but for internal backtesting and
+    optimisation consistency r_f = 0 is the standard choice.  Change
+    RISK_FREE_ANNUAL if you want to account for USDC yield.
+
+    Sortino uses full-sample semi-deviation (all N daily observations in the
+    denominator, MAR = risk_free_daily).  This is the definition used by
+    empyrical / QuantLib and is more conservative than filtering only negative
+    days, because it correctly reflects that positive days still represent
+    exposure time.
+    """
+    ANNUAL_TRADING_DAYS: int   = 365    # BTC = calendar days, not trading days
+    RISK_FREE_ANNUAL:    float = 0.0    # annual risk-free rate (0 = no adjustment)
+
+
 class BacktestConfig:
     """Backtest run parameters."""
 
