@@ -321,12 +321,12 @@ use_risk_management = True
 st.markdown("---")
 # Date Selection - Main Page
 st.markdown("### 📅 Choose Time Period")
-st.markdown("_We have data from 2016. Default time is 4 years back_")
+st.markdown("_We have data from 2016. Default time is 3 years and 11 months back_")
 
 col1, col2, col3, col4, col5 = st.columns([2, 2, 1, 1, 1])
 
 default_end_date = datetime.now().date()
-default_start_date = (datetime.now() - timedelta(days=1460)).date()  # ~4 years
+default_start_date = (datetime.now() - timedelta(days=1430)).date()  # ~3 years 11 months
 
 with col1:
     start_date = st.date_input(
