@@ -113,9 +113,9 @@ h2 { color: #3b4637; }
 
     Every day the strategy calculates:
 
-    $$R = \\frac{\\text{BTC Price (28-day EMA)}}{\\text{Production Cost (46-day EMA)}}$$
+    $$R = \\frac{\\text{BTC Price (7-day EMA)}}{\\text{Production Cost (40-day EMA)}}$$
 
-    **EMA (Exponential Moving Average):** a weighted average where recent values count more than older ones. A 28-day EMA gives roughly 7% weight to today's price and fades out older data. It follows price more closely than a simple average but filters out single-day spikes.
+    **EMA (Exponential Moving Average):** a weighted average where recent values count more than older ones. A 7-day EMA gives roughly 26% weight to today's price and fades out older data quickly. It follows price more closely than a simple average but still filters out single-day spikes.
 
     The ratio $R$ tells us how expensive BTC is relative to what it costs to mine it. Both EMA windows were found by walk-forward validation — see [optimization/best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json).
 
@@ -139,7 +139,7 @@ h2 { color: #3b4637; }
     | $R \\geq 1.25$ | **0%** | Significantly above cost — exit |
 
     **Why these bands?**
-    - They come from Charles Edwards' "Bitcoin Energy Value" framework — [Capriole Charts — Energy Value](https://capriole.com/charts/). The five ratio thresholds (0.80, 0.90, 1.00, 1.10, 1.25) were **not** optimised by walk-forward CV. Adding five more free parameters to an already small dataset would create a high overfitting risk. The thresholds were set once from the paper and frozen.
+    - They come from Charles Edwards' "Bitcoin Energy Value" framework — [Capriole Charts — Energy Value](https://capriole.com/charts/). The five ratio thresholds (0.80, 0.90, 1.00, 1.10, 1.25) were **not** optimised by walk-forward validation. Adding five more free parameters to an already small dataset would create a high overfitting risk. The thresholds were set once from the paper and frozen.
     - The step structure means the portfolio moves gradually rather than in large jumps.
 
     """)
@@ -334,7 +334,7 @@ h2 { color: #3b4637; }
     ### Cost Series Smoothing
 
     The raw daily production cost is first smoothed with a **14-day EMA** inside `ProductionCostSeries`,
-    and then the ratio uses the **46-day EMA** (walk-forward optimised). Two-stage smoothing removes
+    and then the ratio uses the **40-day EMA** (walk-forward optimised). Two-stage smoothing removes
     both daily hashrate noise and occasional outlier spikes.
 
     **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
@@ -356,18 +356,19 @@ h2 { color: #3b4637; }
 
     ---
 
-    ### Daily Weight Change Limit — 10%
+    ### Daily Weight Change Limit — 9%
 
-    At most 10 percentage points of the portfolio move toward the target each day.
-    Moving from 50% BTC to 100% BTC takes five trading days.
+    At most 9 percentage points of the portfolio move toward the target each day.
+    Moving from 50% BTC to 100% BTC takes six trading days.
 
     This limits market impact on a real exchange and prevents a single noisy signal
     from causing a large, costly trade.
 
     *Example: target = 100%, current = 50%.*
-    *Day 1 → 60%, Day 2 → 70%, Day 3 → 80%, Day 4 → 90%, Day 5 → 100%.*
+    *Day 1 → 59%, Day 2 → 68%, Day 3 → 77%, Day 4 → 86%, Day 5 → 95%, Day 6 → 100%.*
 
-    **Fixed.** 10% is a standard daily position-limit assumption for algorithmic execution strategies.
+    **Walk-forward optimised.** The 9% limit was found to give the best out-of-sample Sortino
+    — slightly slower than the 10% default, reducing trades triggered by short-lived signals.
 
     ---
 
@@ -398,7 +399,7 @@ h2 { color: #3b4637; }
     |---|---|---|---|
     | Starting capital | $100,000 | **Fixed** | Normalised baseline for fair comparison |
     | Starting BTC | up to 2.0 BTC | **Fixed** | Capped so BTC value ≤ starting capital |
-    | Max daily weight change | 10% | **Fixed** | Standard algorithmic execution limit |
+    | Max daily weight change | 9% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
     | Min rebalance threshold | 4% | **Fixed** | Transaction cost floor |
     | Trading fee | 0.1% | **Fixed** | [Binance standard spot rate](https://www.binance.com/en/fee/schedule) |
 
@@ -417,16 +418,16 @@ h2 { color: #3b4637; }
 
     Each filter was switched off one at a time. Everything else stayed active.
     The table shows the drop in **out-of-sample Sortino ratio**.
-    Baseline (all on) = **2.443**.
+    Baseline (all on) = **5.600**.
 
     | Component removed | Sortino change | Verdict |
     |---|---|---|
     | Signal EMA smoothing | **−0.43** | Biggest driver |
     | Hash Ribbon filter | **−0.34** | Second biggest |
-    | Trend filter (360-day EMA) | **−0.26** | Significant |
+    | Trend filter (100-day EMA) | **−0.26** | Significant |
     | RSI oversold boost | **−0.07** | Small but consistent; kept |
     | 4-mode risk engine | **−0.02** | Low Sortino impact, strong tail protection |
-    | Volatility scaling | **−0.02** | Low Sortino impact, keeps vol near 40% target |
+    | Volatility scaling | **−0.02** | Low Sortino impact, keeps vol near 50% target |
 
     The risk engine and volatility scaler rarely activate, so their Sortino improvement
     looks small. But in 2018 and 2022 they cut exposure for weeks during the worst drops —
@@ -436,21 +437,22 @@ h2 { color: #3b4637; }
 
     ### Trend Filter
 
-    **Setting:** `TREND_FILTER_WINDOW = 360 days` — **walk-forward optimised**
+    **Setting:** `TREND_FILTER_WINDOW = 100 days` — **walk-forward optimised**
     ([best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json))
 
-    When BTC price is below its 360-day EMA, the strategy caps BTC exposure at **0%**
+    When BTC price is below its 100-day EMA, the strategy caps BTC exposure at **0%**
     regardless of the ratio signal. This prevents holding BTC through a prolonged bear market.
 
-    Shorter windows (e.g. 200 days) generate too many false bear signals during normal
-    corrections. 360 days was found optimal by walk-forward validation.
+    Shorter windows react faster to new downtrends; the 100-day window was found optimal
+    by walk-forward validation as the best balance between responsiveness and avoiding
+    false bear signals during normal pullbacks.
 
     ---
 
     ### Hash Ribbon Filter
 
     **Settings:** Fast SMA = **30 days**, Slow SMA = **60 days** — **fixed from literature**;
-    `HASH_RIBBON_CAP_MULT = 0.1` — **walk-forward optimised**
+    `HASH_RIBBON_CAP_MULT = 0.0` — **walk-forward optimised**
     ([best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json))
 
     **What the Hash Ribbon measures:** Network hashrate is the total computing power solving Bitcoin blocks. When mining is profitable, hashrate grows as operators add machines. When miners lose money, they shut machines off and hashrate falls.
@@ -461,29 +463,30 @@ h2 { color: #3b4637; }
 
     When the fast SMA crosses below the slow SMA, it means hashrate has recently started falling — miners are actively turning off machines. This is called **miner capitulation**. Historically it precedes large price drops, because distressed miners sell BTC to cover running costs before shutting down. The fast/slow SMA pair catches the crossover early: the fast line reacts to the drop first, then the slow line confirms the trend.
 
-    - Fast SMA < Slow SMA (capitulation active): BTC exposure capped to `0.1 × current mode cap`
+    - Fast SMA < Slow SMA (capitulation active): BTC exposure cut to **0%** (complete shutdown)
     - Fast SMA > Slow SMA (recovery): normal trading resumes
 
     The 30/60-day windows come from Charles Edwards' original Hash Ribbon research:
     [Capriole — Hash Ribbons & Bitcoin Bottoms](https://capriole.com/hash-ribbons-bitcoin-bottoms/).
-    The cap multiplier of 0.1 was tuned by walk-forward optimisation — instead of a hard 0% shutdown, a small residual position slightly improves out-of-sample Sortino.
+    The cap multiplier was walk-forward optimised to **0.0** — a complete shutdown during
+    miner capitulation gives better out-of-sample Sortino than keeping a small residual position.
 
     **Code:** [config.py](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/config.py)
-      → `PortfolioConfig.HASH_RIBBON_FAST = 30`, `HASH_RIBBON_SLOW = 60`, `HASH_RIBBON_CAP_MULT = 0.1`
+      → `PortfolioConfig.HASH_RIBBON_FAST = 30`, `HASH_RIBBON_SLOW = 60`, `HASH_RIBBON_CAP_MULT = 0.0`
 
     ---
 
     ### Volatility Scaling
 
-    **Settings:** Vol target = **40% annualised** (optimised), lookback = **15 days** (fixed),
+    **Settings:** Vol target = **50% annualised** (optimised), lookback = **15 days** (fixed),
     min scale = **0.20** (fixed), max scale = **1.00** (fixed)
 
-    $$\\text{Scale} = \\text{clip}\\!\\left(\\frac{0.40}{\\text{Realised Vol (15d)}},\\ 0.20,\\ 1.00\\right)$$
+    $$\\text{Scale} = \\text{clip}\\!\\left(\\frac{0.50}{\\text{Realised Vol (15d)}},\\ 0.20,\\ 1.00\\right)$$
 
-    When realised vol exceeds 40% annualised, the position shrinks proportionally.
+    When realised vol exceeds 50% annualised, the position shrinks proportionally.
     At low vol, scale stays at 1.00 — no leverage.
 
-    - **VOL_TARGET = 0.40** — optimised. Raw BTC runs at 60–80% annualised vol.
+    - **VOL_TARGET = 0.50** — optimised. Raw BTC runs at 60–80% annualised vol.
     - **VOL_SCALING_WINDOW = 15 days** — fixed. Standard two-week lookback.
     - **VOL_SCALE_MIN = 0.20** — keeps at least 20% BTC exposure during recoveries.
     - **VOL_SCALE_MAX = 1.00** — no leverage.
@@ -492,15 +495,15 @@ h2 { color: #3b4637; }
 
     ### RSI Oversold Boost
 
-    **Settings:** Window = **14 days** (fixed), threshold = **28** (optimised), multiplier = **1.30** (fixed)
+    **Settings:** Window = **14 days** (fixed), threshold = **36** (optimised), multiplier = **1.30** (fixed)
 
-    When the 14-day RSI drops below 28, the target BTC weight multiplies by ×1.30.
-    This adds a small extra buy push during very oversold conditions (e.g. March 2020).
+    When the 14-day RSI drops below 36, the target BTC weight multiplies by ×1.30.
+    This adds a small extra buy push during oversold conditions (e.g. March 2020).
 
     | Parameter | Value | Status | Source |
     |---|---|---|---|
     | RSI period | 14 days | **Fixed** | [Wilder (1978) — RSI standard](https://en.wikipedia.org/wiki/Relative_strength_index) |
-    | RSI threshold | 28 | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | RSI threshold | 36 | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
     | Multiplier | 1.30 | **Fixed** | Calibrated; consistent with momentum literature |
 
     ---
@@ -541,10 +544,10 @@ h2 { color: #3b4637; }
     | Indirect control | How it protects |
     |---|---|
     | **Production cost ratio** | Reduces BTC allocation when price is well above cost |
-    | **360-day trend filter** | Forces 0% BTC in structural bear markets |
-    | **Hash Ribbon filter** | Cuts exposure to near-zero during miner capitulation |
+    | **100-day trend filter** | Forces 0% BTC in structural bear markets |
+    | **Hash Ribbon filter** | Cuts exposure to 0% during miner capitulation |
     | **4-mode risk engine** | Caps max BTC at 75/45/5% when drawdown, vol, or VaR exceeds threshold |
-    | **Volatility scaling** | Shrinks position proportionally when realised vol exceeds 40% |
+    | **Volatility scaling** | Shrinks position proportionally when realised vol exceeds 50% |
     | **Max daily weight change** | Limits how fast the portfolio moves, reducing impact of false signals |
 
     I also tested a **direct** approach: stop-loss at −15%, take-profit at +25%, and trailing stop at −10%. All three forced hard binary exits. They consistently triggered on normal pullbacks and caused the strategy to miss the recovery. All three hurt Sortino and were dropped. The indirect, gradual approach works better for an asset as volatile as Bitcoin.
@@ -560,11 +563,11 @@ h2 { color: #3b4637; }
     | Mode | DD trigger | Ann. vol trigger | VaR (99%, 1d) trigger | Max BTC |
     |---|---|---|---|---|
     | **NORMAL** | — | — | — | **100%** |
-    | **CAUTION** | ≤ −6% | ≥ 130% | ≥ 4% | **75%** |
-    | **RISK_OFF** | ≤ −36% | ≥ 220% | ≥ 6% | **45%** |
-    | **EMERGENCY** | ≤ −53% | ≥ 230% | ≥ 9% | **5%** |
+    | **CAUTION** | ≤ −38% | ≥ 105% | ≥ 7.5% | **75%** |
+    | **RISK_OFF** | ≤ −47% | ≥ 135% | ≥ 8.5% | **45%** |
+    | **EMERGENCY** | ≤ −52% | ≥ 175% | ≥ 9.5% | **5%** |
 
-    The RISK_OFF and EMERGENCY drawdown thresholds look large because they apply to
+    The RISK_OFF and EMERGENCY drawdown thresholds look large (−47%/−52%) because they apply to
     **portfolio drawdown** — already dampened by position sizing, trend filter, and Hash Ribbon.
     Raw BTC drawdown in bear markets often exceeds 70–80%.
 
@@ -644,8 +647,8 @@ h2 { color: #3b4637; }
     large Bitcoin rallies fully and cuts exposure during crashes will score higher on Sortino than
     on Sharpe, and that is the correct reward for exactly the behaviour this strategy targets.
 
-    Concretely: in walk-forward CV on 3,297 days of data, the baseline strategy achieved
-    Sortino = **2.443** vs. Sharpe ≈ **1.38**. The gap exists because Bull-run months have
+    Concretely: in walk-forward validation on 3,297 days of data, the baseline strategy achieved
+    Sortino = **5.600** vs. Sharpe ≈ **1.38**. The gap exists because Bull-run months have
     30–50% monthly returns — Sharpe counts those as "volatile" and docks the score. Sortino
     does not.
 
@@ -675,20 +678,27 @@ h2 { color: #3b4637; }
 
     | Parameter | Value | Status | Source |
     |---|---|---|---|
-    | Price EMA window | 28 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
-    | Cost EMA window | 46 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Price EMA window | 7 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Cost EMA window | 40 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
     | Signal EMA window | 3 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
-    | Trend filter window | 360 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
-    | RSI oversold threshold | 28 | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
-    | Volatility target | 40% ann. | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
-    | CAUTION DD threshold | −6% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
-    | RISK_OFF DD threshold | −36% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
-    | EMERGENCY DD threshold | −53% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Trend filter window | 100 days | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | RSI oversold threshold | 36 | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Volatility target | 50% ann. | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | CAUTION DD threshold | −38% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | CAUTION Vol threshold | 105% ann. | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | CAUTION VaR threshold | 7.5% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | RISK_OFF DD threshold | −47% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | RISK_OFF Vol threshold | 135% ann. | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | RISK_OFF VaR threshold | 8.5% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | EMERGENCY DD threshold | −52% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | EMERGENCY Vol threshold | 175% ann. | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | EMERGENCY VaR threshold | 9.5% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Max daily weight change | 9% | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
     | Overhead factor | 1.47 | **Fixed** | [CoinShares Bitcoin Mining Report](https://coinshares.com/research/bitcoin-mining-network) |
     | Blocks per day | 144 | **Fixed** | Bitcoin protocol — 10-minute block target |
     | Hash Ribbon fast SMA | 30 days | **Fixed** | [Capriole Hash Ribbon research](https://capriole.com/hash-ribbons-bitcoin-bottoms/) |
     | Hash Ribbon slow SMA | 60 days | **Fixed** | [Capriole Hash Ribbon research](https://capriole.com/hash-ribbons-bitcoin-bottoms/) |
-    | Hash Ribbon cap multiplier | 0.10 | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
+    | Hash Ribbon cap multiplier | 0.0 | **Optimised** | [best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json) |
     | RSI window | 14 days | **Fixed** | Wilder (1978) — technical analysis standard |
     | RSI multiplier | 1.30 | **Fixed** | Momentum literature calibration |
     | Vol scaling lookback | 15 days | **Fixed** | Standard two-week window |
@@ -700,7 +710,6 @@ h2 { color: #3b4637; }
     | Recovery days — CAUTION | 2 days | **Fixed** | Minimum stabilisation window |
     | Recovery days — RISK_OFF | 3 days | **Fixed** | Minimum stabilisation window |
     | Recovery days — EMERGENCY | 5 days | **Fixed** | Minimum stabilisation window |
-    | Max daily weight change | 10% | **Fixed** | Market impact assumption |
     | Min rebalance threshold | 4% | **Fixed** | Transaction cost floor |
     | Trading fee | 0.1% | **Fixed** | [Binance standard spot rate](https://www.binance.com/en/fee/schedule) |
     | Starting capital | $100,000 | **Fixed** | Normalised for fair comparison across periods |
@@ -821,7 +830,7 @@ h2 { color: #3b4637; }
 
     st.markdown("---")
     st.caption(
-        "All parameters reflect the codebase as of February 2026. "
+        "All parameters reflect the codebase as of March 2026. "
         "Walk-forward optimised values are loaded from optimization/best_params.json at runtime "
         "and override the defaults in config.py. "
         "Fixed parameters are set directly in config.py and do not change between runs."
