@@ -83,6 +83,7 @@ def _snapshot_defaults() -> None:
         "RSI_OVERSOLD": cfg.PortfolioConfig.RSI_OVERSOLD,
         "VOL_TARGET": cfg.PortfolioConfig.VOL_TARGET,
         "HASH_RIBBON_CAP_MULT": cfg.PortfolioConfig.HASH_RIBBON_CAP_MULT,
+        "MAX_DAILY_WEIGHT_CHANGE": cfg.PortfolioConfig.MAX_DAILY_WEIGHT_CHANGE,
     }
     _DEFAULT_RISK = {
         "DD_THRESHOLDS": copy.deepcopy(cfg.RiskManagementConfig.DD_THRESHOLDS),
@@ -169,6 +170,7 @@ GROUP_B_DEFAULTS: dict[str, Any] = {
     "DD_THRESHOLDS": copy.deepcopy(cfg.RiskManagementConfig.DD_THRESHOLDS),
     "VOL_THRESHOLDS": copy.deepcopy(cfg.RiskManagementConfig.VOL_THRESHOLDS),
     "VAR_THRESHOLDS": copy.deepcopy(cfg.RiskManagementConfig.VAR_THRESHOLDS),
+    "MAX_DAILY_WEIGHT_CHANGE": cfg.PortfolioConfig.MAX_DAILY_WEIGHT_CHANGE,
 }
 
 GROUP_C_DEFAULTS: dict[str, Any] = {
@@ -213,6 +215,17 @@ def _suggest_group_b(trial) -> dict[str, Any]:
     vol_risk_off  = max(vol_raw[1], vol_caution  + 0.10)
     vol_emergency = max(vol_raw[2], vol_risk_off + 0.10)
 
+    var_raw = sorted(
+        [
+            trial.suggest_float("var_raw_1", 0.02, 0.15, step=0.005),
+            trial.suggest_float("var_raw_2", 0.02, 0.15, step=0.005),
+            trial.suggest_float("var_raw_3", 0.02, 0.15, step=0.005),
+        ]
+    )
+    var_caution   = var_raw[0]
+    var_risk_off  = max(var_raw[1], var_caution  + 0.01)
+    var_emergency = max(var_raw[2], var_risk_off + 0.01)
+
     return {
         "DD_THRESHOLDS": {
             "CAUTION":   dd_caution,
@@ -224,7 +237,12 @@ def _suggest_group_b(trial) -> dict[str, Any]:
             "RISK_OFF":  vol_risk_off,
             "EMERGENCY": vol_emergency,
         },
-        "VAR_THRESHOLDS": copy.deepcopy(cfg.RiskManagementConfig.VAR_THRESHOLDS),
+        "VAR_THRESHOLDS": {
+            "CAUTION":   var_caution,
+            "RISK_OFF":  var_risk_off,
+            "EMERGENCY": var_emergency,
+        },
+        "MAX_DAILY_WEIGHT_CHANGE": trial.suggest_float("max_daily_weight_change", 0.04, 0.30, step=0.01),
     }
 
 
@@ -305,7 +323,7 @@ def run_phase_b(
     remaining = max(0, n_trials - len(study.trials))
 
     log.info("Phase B — risk manager  (%d trials, %d already done)", n_trials, n_trials - remaining)
-    log.info("  params: DD_THRESHOLDS x3, VOL_THRESHOLDS x3")
+    log.info("  params: DD_THRESHOLDS x3, VOL_THRESHOLDS x3, VAR_THRESHOLDS x3, MAX_DAILY_WEIGHT_CHANGE")
 
     a_fixed = copy.deepcopy(best_a)
     c_fixed = copy.deepcopy(GROUP_C_DEFAULTS)
@@ -333,6 +351,11 @@ def run_phase_b(
     vol_risk_off  = max(vol_sorted[1], vol_caution  + 0.10)
     vol_emergency = max(vol_sorted[2], vol_risk_off + 0.10)
 
+    var_sorted = sorted([p["var_raw_1"], p["var_raw_2"], p["var_raw_3"]])
+    var_caution   = var_sorted[0]
+    var_risk_off  = max(var_sorted[1], var_caution  + 0.01)
+    var_emergency = max(var_sorted[2], var_risk_off + 0.01)
+
     best_b: dict[str, Any] = {
         "DD_THRESHOLDS": {
             "CAUTION": dd_caution,
@@ -344,7 +367,12 @@ def run_phase_b(
             "RISK_OFF": vol_risk_off,
             "EMERGENCY": vol_emergency,
         },
-        "VAR_THRESHOLDS": copy.deepcopy(cfg.RiskManagementConfig.VAR_THRESHOLDS),
+        "VAR_THRESHOLDS": {
+            "CAUTION":   var_caution,
+            "RISK_OFF":  var_risk_off,
+            "EMERGENCY": var_emergency,
+        },
+        "MAX_DAILY_WEIGHT_CHANGE": p["max_daily_weight_change"],
     }
     _log_params("Phase B best", best_b, study.best_value)
     return best_b
@@ -450,6 +478,8 @@ def apply_best_params_to_live_config(best_a: dict, best_b: dict, best_c: dict) -
         cfg.RiskManagementConfig.VOL_THRESHOLDS.update(best_b["VOL_THRESHOLDS"])
     if "VAR_THRESHOLDS" in best_b:
         cfg.RiskManagementConfig.VAR_THRESHOLDS.update(best_b["VAR_THRESHOLDS"])
+    if "MAX_DAILY_WEIGHT_CHANGE" in best_b:
+        cfg.PortfolioConfig.MAX_DAILY_WEIGHT_CHANGE = best_b["MAX_DAILY_WEIGHT_CHANGE"]
 
     for k, v in best_c.items():
         setattr(cfg.PortfolioConfig, k, v)

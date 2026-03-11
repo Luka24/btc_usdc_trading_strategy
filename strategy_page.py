@@ -117,9 +117,9 @@ h2 { color: #3b4637; }
 
     **EMA (Exponential Moving Average):** a weighted average where recent values count more than older ones. A 28-day EMA gives roughly 7% weight to today's price and fades out older data. It follows price more closely than a simple average but filters out single-day spikes.
 
-    The ratio $R$ tells us how expensive BTC is relative to what it costs to mine it. Both EMA windows were found by walk-forward cross-validation — see [optimization/best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json).
+    The ratio $R$ tells us how expensive BTC is relative to what it costs to mine it. Both EMA windows were found by walk-forward validation — see [optimization/best_params.json](https://github.com/Luka24/btc_usdc_trading_strategy/blob/main/optimization/best_params.json).
 
-    **Walk-forward cross-validation:** a method for testing parameters on data they were never trained on. The full history is split into many windows. In each window, the model is trained on the first part and tested on the next part (which it has not seen). The window then moves forward and repeats. The final Sortino score is the average across all the test parts only — never the training parts. This prevents the strategy from being tuned specifically to past data it will never see again.
+    **Walk-forward validation:** a method for testing parameters on data they were never trained on. The full history is split into expanding windows — each window trains on all data up to a cutoff, then tests on the next year only (which it has never seen). The cutoff moves forward year by year. The final Sortino score is the average across all 5 out-of-sample years only — never the training periods. Unlike k-fold cross-validation, future data never leaks into training. This prevents the strategy from being tuned specifically to past data it will never see again.
 
     ---
 
@@ -443,7 +443,7 @@ h2 { color: #3b4637; }
     regardless of the ratio signal. This prevents holding BTC through a prolonged bear market.
 
     Shorter windows (e.g. 200 days) generate too many false bear signals during normal
-    corrections. 360 days was found optimal by walk-forward cross-validation.
+    corrections. 360 days was found optimal by walk-forward validation.
 
     ---
 

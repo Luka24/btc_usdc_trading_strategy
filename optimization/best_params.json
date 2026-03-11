@@ -1,5 +1,5 @@
 {
-  "final_sortino": 5.22750984434092,
+  "final_sortino": 5.599596197730115,
   "group_a": {
     "PRICE_EMA_WINDOW": 7,
     "COST_EMA_WINDOW": 40,
@@ -10,20 +10,21 @@
   },
   "group_b": {
     "DD_THRESHOLDS": {
-      "CAUTION": -0.44999999999999996,
-      "RISK_OFF": -0.48,
-      "EMERGENCY": -0.53
+      "CAUTION": -0.38,
+      "RISK_OFF": -0.47,
+      "EMERGENCY": -0.52
     },
     "VOL_THRESHOLDS": {
-      "CAUTION": 1.1,
-      "RISK_OFF": 1.3,
-      "EMERGENCY": 2.0
+      "CAUTION": 1.05,
+      "RISK_OFF": 1.35,
+      "EMERGENCY": 1.75
     },
     "VAR_THRESHOLDS": {
-      "CAUTION": 0.04,
-      "RISK_OFF": 0.06,
-      "EMERGENCY": 0.09
-    }
+      "CAUTION": 0.075,
+      "RISK_OFF": 0.08499999999999999,
+      "EMERGENCY": 0.095
+    },
+    "MAX_DAILY_WEIGHT_CHANGE": 0.09
   },
   "group_c": {
     "HASH_RIBBON_CAP_MULT": 0.0

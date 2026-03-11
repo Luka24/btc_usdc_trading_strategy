@@ -1,7 +1,7 @@
 import numpy as np
 from collections import deque
 from enum import Enum
-from config import RiskManagementConfig as Config
+from config import RiskManagementConfig as Config, MetricsConfig
 
 
 class RiskMode(Enum):
@@ -53,7 +53,7 @@ class RiskManager:
         if len(self.returns) < 2:
             return 0.0
         daily_vol = float(np.std(self.returns, ddof=0))
-        return daily_vol * np.sqrt(252)
+        return daily_vol * np.sqrt(MetricsConfig.ANNUAL_TRADING_DAYS)  # 365: BTC trades 24/7
 
     def _var_loss_pct(self) -> float:
         if len(self.returns) < 2:

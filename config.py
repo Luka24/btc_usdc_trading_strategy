@@ -137,7 +137,7 @@ class PortfolioConfig:
 class RiskManagementConfig:
     """Risk monitoring and mode-switching parameters."""
 
-    ROLLING_PEAK_WINDOW = 252
+    ROLLING_PEAK_WINDOW = 365  # BTC trades 24/7 — calendar days, not equity trading days
     VOLATILITY_WINDOW = 30
     VAR_LOOKBACK = 30
     VAR_CONFIDENCE = 0.99

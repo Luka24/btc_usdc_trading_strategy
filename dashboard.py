@@ -40,6 +40,10 @@ if os.path.exists(_bp_path):
     _cfg.PortfolioConfig.VOL_TARGET          = _ga['VOL_TARGET']
     _cfg.RiskManagementConfig.DD_THRESHOLDS.update(_gb['DD_THRESHOLDS'])
     _cfg.RiskManagementConfig.VOL_THRESHOLDS.update(_gb['VOL_THRESHOLDS'])
+    if 'VAR_THRESHOLDS' in _gb:
+        _cfg.RiskManagementConfig.VAR_THRESHOLDS.update(_gb['VAR_THRESHOLDS'])
+    if 'MAX_DAILY_WEIGHT_CHANGE' in _gb:
+        _cfg.PortfolioConfig.MAX_DAILY_WEIGHT_CHANGE = _gb['MAX_DAILY_WEIGHT_CHANGE']
     _cfg.PortfolioConfig.HASH_RIBBON_CAP_MULT = _gc['HASH_RIBBON_CAP_MULT']
     _BEST_PARAMS_LOADED = True
     _BEST_PARAMS_SORTINO = _bp.get('final_sortino', None)
@@ -296,7 +300,7 @@ st.markdown(
         <div style="margin-top:6px; color:#3C4858; font-size:15px;">
             A systematic strategy that sizes BTC exposure based on how far the price deviates from its
             estimated production cost, with multiple independent risk filters on top.
-            <strong>All parameters were optimised for Sortino ratio</strong> using walk-forward cross-validation.
+            <strong>All parameters were optimised for Sortino ratio</strong> using walk-forward validation.
             Full methodology in the Strategy page.
         </div>
     </div>
@@ -321,12 +325,12 @@ use_risk_management = True
 st.markdown("---")
 # Date Selection - Main Page
 st.markdown("### 📅 Choose Time Period")
-st.markdown("_We have data from 2016. Default time is 3 years and 11 months back_")
+st.markdown("_We have data from 2016. Default time is 4 years back_")
 
 col1, col2, col3, col4, col5 = st.columns([2, 2, 1, 1, 1])
 
 default_end_date = datetime.now().date()
-default_start_date = (datetime.now() - timedelta(days=1430)).date()  # ~3 years 11 months
+default_start_date = (datetime.now() - timedelta(days=1461)).date()  # 4 years
 
 with col1:
     start_date = st.date_input(
@@ -589,20 +593,35 @@ st.markdown("""
 **Portfolio value** = BTC position + USDC position. The backtest opens with up to 2 BTC (remaining capital in USDC at the first day's price). Changing the date range reruns the backtest — data is cached for 1 hour.
 """)
 
+_p_ema      = _cfg.SignalConfig.PRICE_EMA_WINDOW
+_c_ema      = _cfg.SignalConfig.COST_EMA_WINDOW
+_s_ema      = _cfg.SignalConfig.SIGNAL_EMA_WINDOW
+_tf         = _cfg.PortfolioConfig.TREND_FILTER_WINDOW
+_rsi_os     = _cfg.PortfolioConfig.RSI_OVERSOLD
+_vt_pct     = int(_cfg.PortfolioConfig.VOL_TARGET * 100)
+_mdwc_pct   = int(_cfg.PortfolioConfig.MAX_DAILY_WEIGHT_CHANGE * 100)
+_dd         = _cfg.RiskManagementConfig.DD_THRESHOLDS
+_vol        = _cfg.RiskManagementConfig.VOL_THRESHOLDS
+_var        = _cfg.RiskManagementConfig.VAR_THRESHOLDS
+_caps       = _cfg.RiskManagementConfig.MODE_CAPS
+_rec        = _cfg.RiskManagementConfig.RECOVERY_THRESHOLDS
+_rdays      = _cfg.RiskManagementConfig.RECOVERY_DAYS
+_sortino_str = f"{_BEST_PARAMS_SORTINO:.3f}" if _BEST_PARAMS_SORTINO else "N/A"
+
 with st.expander("How this strategy works", expanded=True):
     st.markdown(
-        '''<div style="border-left:3px solid #e07b00;background:#fff9f2;padding:7px 14px;margin-bottom:10px;font-size:14px;color:#1c1c1c;line-height:1.55;">
-        All parameters were optimised for <strong>Sortino ratio</strong> using walk-forward cross-validation — out-of-sample Sortino = <strong>2.443</strong>. This is the primary metric to evaluate.
+        f'''<div style="border-left:3px solid #e07b00;background:#fff9f2;padding:7px 14px;margin-bottom:10px;font-size:14px;color:#1c1c1c;line-height:1.55;">
+        All parameters were optimised for <strong>Sortino ratio</strong> using walk-forward validation (5 expanding OOS folds, 2020–mid-2025) — out-of-sample Sortino = <strong>{_sortino_str}</strong>. This is the primary metric to evaluate.
         </div>''',
         unsafe_allow_html=True
     )
-    st.markdown("""
+    st.markdown(f"""
     > **EMA (Exponential Moving Average):** a weighted average that gives more weight to recent values.
     > Window = N days means older data fades out; the most recent day carries the most weight.
     > Used here to smooth price and mining cost so the signal reacts to trends, not daily noise.
     >
     > **RSI (Relative Strength Index, 14-day):** momentum oscillator ranging 0–100.
-    > RSI < 30 = oversold (sellers exhausted); RSI > 70 = overbought.
+    > RSI < {_rsi_os} = oversold (sellers exhausted); RSI > 70 = overbought.
     > Used here as a small position boost when the market is deeply oversold.
 
     ---
@@ -620,30 +639,30 @@ with st.expander("How this strategy works", expanded=True):
     | 1.10 – 1.25 | 30% |
     | > 1.25 | **0%** |
 
-    Price is smoothed with a **30-day EMA**, mining cost with a **90-day EMA** before the ratio is computed.
-    This limits daily allocation shifts to roughly **2–3 percentage points** regardless of how volatile the raw price is.
+    Price is smoothed with a **{_p_ema}-day EMA**, mining cost with a **{_c_ema}-day EMA** before the ratio is computed.
+    The signal itself is then smoothed with a **{_s_ema}-day EMA**. Daily allocation shifts are capped at **{_mdwc_pct}% per day**.
 
     ---
     #### What actually drives results — ablation study
-    Each component was removed one at a time. Baseline out-of-sample Sortino = **2.443**.
+    Each component was removed one at a time. Baseline out-of-sample Sortino = **{_sortino_str}**.
 
     | Component removed | Change in Sortino | Takeaway |
     |---|---|---|
     | Signal EMA smoothing | −0.43 | **Biggest driver.** Wrong EMA windows kill most of the edge. |
     | Hash Ribbon filter | −0.34 | **Second biggest.** Without it the strategy holds through miner capitulation crashes. |
-    | Trend filter (360-day EMA) | −0.26 | **Meaningful.** Without it the strategy stays long through bear markets. |
+    | Trend filter ({_tf}-day EMA) | −0.26 | **Meaningful.** Without it the strategy stays long through bear markets. |
     | RSI oversold boost | −0.07 | Small but consistent. Kept. |
     | 4-mode risk engine | −0.02 | Near-zero Sortino impact — kept for tail risk. |
-    | Volatility scaling | −0.02 | Near-zero Sortino impact — kept to maintain 40% vol target. |
+    | Volatility scaling | −0.02 | Near-zero Sortino impact — kept to maintain {_vt_pct}% vol target. |
 
     ---
     #### Risk filters (passive)
     These don’t trade — they force allocation to 0% when conditions are bad:
 
     - **Hash Ribbon:** 30-day hashrate SMA drops below 60-day → 0% BTC until cross-back.
-    - **Trend filter:** BTC below its 360-day EMA → 0% BTC regardless of the ratio.
-    - **Volatility scaling:** realised vol above 40% annualised → position scaled down proportionally.
-    - **RSI oversold boost:** RSI(14) < 30 → target weight ×1.30.
+    - **Trend filter:** BTC below its {_tf}-day EMA → 0% BTC regardless of the ratio.
+    - **Volatility scaling:** realised vol above {_vt_pct}% annualised → position scaled down proportionally.
+    - **RSI oversold boost:** RSI(14) < {_rsi_os} → target weight ×1.30.
 
     ---
     #### Active risk management — 3-trigger, 4-mode system
@@ -659,16 +678,16 @@ with st.expander("How this strategy works", expanded=True):
 
     | Mode | DD trigger | Vol trigger | VaR trigger | Max BTC | Recovery thresholds | Sticky days |
     |---|---|---|---|---|---|---|
-    | CAUTION | ≤ −6% | ≥ 130% ann. | ≥ 4% | **75%** | DD > −9%, Vol < 65%, VaR < 2.5% | 2 |
-    | RISK_OFF | ≤ −36% | ≥ 220% ann. | ≥ 6% | **45%** | DD > −16%, Vol < 85%, VaR < 4% | 3 |
-    | EMERGENCY | ≤ −53% | ≥ 230% ann. | ≥ 9% | **5%** | DD > −28%, Vol < 120%, VaR < 6% | 5 |
+    | CAUTION | ≤ {_dd['CAUTION']*100:.0f}% | ≥ {_vol['CAUTION']*100:.0f}% ann. | ≥ {_var['CAUTION']*100:.1f}% | **{int(_caps['CAUTION']*100)}%** | DD > {_rec['CAUTION']['dd']*100:.0f}%, Vol < {_rec['CAUTION']['vol']*100:.0f}%, VaR < {_rec['CAUTION']['var']*100:.1f}% | {_rdays['CAUTION']} |
+    | RISK_OFF | ≤ {_dd['RISK_OFF']*100:.0f}% | ≥ {_vol['RISK_OFF']*100:.0f}% ann. | ≥ {_var['RISK_OFF']*100:.1f}% | **{int(_caps['RISK_OFF']*100)}%** | DD > {_rec['RISK_OFF']['dd']*100:.0f}%, Vol < {_rec['RISK_OFF']['vol']*100:.0f}%, VaR < {_rec['RISK_OFF']['var']*100:.1f}% | {_rdays['RISK_OFF']} |
+    | EMERGENCY | ≤ {_dd['EMERGENCY']*100:.0f}% | ≥ {_vol['EMERGENCY']*100:.0f}% ann. | ≥ {_var['EMERGENCY']*100:.1f}% | **{int(_caps['EMERGENCY']*100)}%** | DD > {_rec['EMERGENCY']['dd']*100:.0f}%, Vol < {_rec['EMERGENCY']['vol']*100:.0f}%, VaR < {_rec['EMERGENCY']['var']*100:.1f}% | {_rdays['EMERGENCY']} |
 
     Ablation: −0.02 Sortino. But in 2018 and 2022 it kept exposure near-zero for weeks during the worst crashes.
     Drawdown thresholds optimised in walk-forward CV; recovery days and VaR window fixed.
 
     ---
     #### Parameters
-    - **Optimised (walk-forward CV):** EMA windows, drawdown/vol/VaR thresholds, vol target, trend filter window, RSI threshold
+    - **Optimised (walk-forward CV):** EMA windows (price={_p_ema}d, cost={_c_ema}d, signal={_s_ema}d), DD/Vol/VaR thresholds, vol target ({_vt_pct}%), trend filter ({_tf}d), RSI threshold ({_rsi_os}), max daily weight change ({_mdwc_pct}%)
     - **Fixed (literature):** RSI period 14d, hashrate SMAs 30/60d, RSI multiplier 1.30
     - **Dropped:** stop-loss −15%, take-profit +25%, trailing stop −10% — all triggered on normal pullbacks and missed the recovery
 
@@ -682,11 +701,11 @@ st.markdown("---")
 
 
 # 1. BTC Price vs Production Cost
-st.markdown("""
+st.markdown(f"""
 #### Bitcoin Price vs Mining Cost
-Primary signal. Raw daily mining cost (gray) smoothed to a **90-day EMA** (red dashed) —
-that EMA is what enters the ratio. BTC price is smoothed with a **30-day EMA**.
-The smoothing limits daily allocation shifts to roughly **2–3 percentage points**.
+Primary signal. Raw daily mining cost (gray) smoothed to a **{_c_ema}-day EMA** (red dashed) —
+that EMA is what enters the ratio. BTC price is smoothed with a **{_p_ema}-day EMA**.
+The signal itself is smoothed with a **{_s_ema}-day EMA** before the ratio drives allocation.
 
 Orange band = ±10% around smoothed cost (neutral zone, 50–70% BTC). Below the band → increasingly long; above it → reducing exposure.
 """)
