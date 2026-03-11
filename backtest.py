@@ -7,7 +7,7 @@ from enum import Enum
 from production_cost import ProductionCostSeries, get_block_reward_for_date
 from portfolio import PortfolioManager
 from risk_manager import RiskManager
-from config import SignalConfig, PortfolioConfig
+from config import SignalConfig, PortfolioConfig, MetricsConfig
 
 
 class Signal(Enum):
@@ -209,7 +209,7 @@ class BacktestEngine:
 
             # Vol scaling: shrink exposure when realised vol exceeds target
             if PortfolioConfig.VOL_TARGET > 0 and len(_btc_returns) >= 5:
-                realized_vol = float(np.std(_btc_returns, ddof=0)) * np.sqrt(252)
+                realized_vol = float(np.std(_btc_returns, ddof=0)) * np.sqrt(MetricsConfig.ANNUAL_TRADING_DAYS)
                 if realized_vol > 0:
                     raw_scalar = PortfolioConfig.VOL_TARGET / realized_vol
                     vol_scalar = float(np.clip(raw_scalar, PortfolioConfig.VOL_SCALE_MIN, PortfolioConfig.VOL_SCALE_MAX))
