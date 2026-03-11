@@ -602,17 +602,17 @@ h2 { color: #3b4637; }
 
     ### Risk Metrics — Formulas
 
-    **Drawdown (rolling 252-day peak)**
+    **Drawdown (rolling 365-day peak)**
 
-    $$\\text{DD} = \\frac{\\text{Portfolio Value} - \\text{Peak}_{252\\text{d}}}{\\text{Peak}_{252\\text{d}}}$$
+    $$\\text{DD} = \\frac{\\text{Portfolio Value} - \\text{Peak}_{365\\text{d}}}{\\text{Peak}_{365\\text{d}}}$$
 
-    A rolling 252-day peak (one trading year) prevents the engine from staying locked in EMERGENCY
+    A rolling 365-day peak (one calendar year) prevents the engine from staying locked in EMERGENCY
     mode for years because the 2021 all-time high is still above current levels.
-    Source for 252-day standard: hedge fund industry annual calculation horizon.
+    BTC trades 24/7 — 365 calendar days is the correct annual window, not the 252-day equity convention.
 
     **Annualised Volatility (30-day lookback, fixed)**
 
-    $$\\text{Vol} = \\text{std}(r_{1..30}) \\times \\sqrt{252}$$
+    $$\\text{Vol} = \\text{std}(r_{1..30}) \\times \\sqrt{365}$$
 
     **Value-at-Risk (99% confidence, 30-day lookback, fixed)**
 
@@ -623,13 +623,13 @@ h2 { color: #3b4637; }
 
     **Sharpe Ratio**
 
-    $$\\text{Sharpe} = \\frac{\\bar{r}}{\\sigma_r} \\times \\sqrt{252}$$
+    $$\\text{Sharpe} = \\frac{\\bar{r}}{\\sigma_r} \\times \\sqrt{365}$$
 
     Return per unit of **total** volatility — both upside and downside days are penalised equally.
 
     **Sortino Ratio**
 
-    $$\\text{Sortino} = \\frac{\\bar{r}}{\\sigma_{\\text{downside}}} \\times \\sqrt{252}$$
+    $$\\text{Sortino} = \\frac{\\bar{r}}{\\sigma_{\\text{downside}}} \\times \\sqrt{365}$$
 
     Return per unit of **downside** volatility only. Days where the portfolio gains are not counted
     as risk.
