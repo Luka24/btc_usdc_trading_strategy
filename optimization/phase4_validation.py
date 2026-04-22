@@ -165,7 +165,8 @@ def rolling_sharpe(value_series: pd.Series, window: int = 30) -> pd.Series:
     rets = value_series.pct_change()
     roll_mean = rets.rolling(window).mean()
     roll_std  = rets.rolling(window).std()
-    return (roll_mean / roll_std * np.sqrt(252)).dropna()
+    ANN = cfg.MetricsConfig.ANNUAL_TRADING_DAYS  # 365: BTC trades every calendar day
+    return (roll_mean / roll_std * np.sqrt(ANN)).dropna()
 
 
 # ---------------------------------------------------------------------------

@@ -4,8 +4,13 @@ import requests
 from datetime import datetime, timedelta
 from typing import Optional
 import os
+import time
 import json
 from config import ProductionCostConfig as CostConfig
+
+# File-based cache max age in hours. After this, the cache is ignored and fresh
+# data is fetched automatically (without requiring force_refresh=True).
+_CACHE_MAX_AGE_HOURS = 24
 
 try:
     import yfinance as yf
@@ -15,22 +20,32 @@ except ImportError:
     print("[WARNING] yfinance not installed. Install with: pip install yfinance")
 
 
+def _cache_is_fresh(path: str, max_age_hours: float = _CACHE_MAX_AGE_HOURS) -> bool:
+    """Return True if the cache file exists and is younger than max_age_hours."""
+    if not os.path.exists(path):
+        return False
+    age_seconds = time.time() - os.path.getmtime(path)
+    return age_seconds < max_age_hours * 3600
+
+
 class CoinGeckoFetcher:
     BASE_URL = "https://api.coingecko.com/api/v3"
     DATA_DIR = "data"
-    
+
     @staticmethod
     def _get_cache_path(days: int, currency: str = "usd") -> str:
         return os.path.join(CoinGeckoFetcher.DATA_DIR, f"btc_prices_{days}d_{currency}.csv")
-    
+
     @staticmethod
     def _load_from_cache(days: int) -> Optional[pd.DataFrame]:
         cache_path = CoinGeckoFetcher._get_cache_path(days)
-        if os.path.exists(cache_path):
+        if _cache_is_fresh(cache_path):
             df = pd.read_csv(cache_path)
             df['date'] = pd.to_datetime(df['date'])
             print(f"   [CACHE] Loaded prices from {cache_path}")
             return df
+        if os.path.exists(cache_path):
+            print(f"   [CACHE] Price cache expired (>{_CACHE_MAX_AGE_HOURS}h), fetching fresh data...")
         return None
     
     @staticmethod
@@ -147,19 +162,22 @@ class CoinGeckoFetcher:
 
 class BlockchainFetcher:
     DATA_DIR = "data"
-    
+
     @staticmethod
     def _get_cache_path(days: int) -> str:
         return os.path.join(BlockchainFetcher.DATA_DIR, f"hashrate_{days}d.csv")
-    
+
     @staticmethod
     def _load_from_cache(days: int) -> Optional[pd.DataFrame]:
         cache_path = BlockchainFetcher._get_cache_path(days)
-        if os.path.exists(cache_path):
+        if _cache_is_fresh(cache_path):
             df = pd.read_csv(cache_path)
             df['date'] = pd.to_datetime(df['date'])
             print(f"   [CACHE] Loaded hashrate from {cache_path}")
             return df
+        if os.path.exists(cache_path):
+            print(f"   [CACHE] Hashrate cache expired (>{_CACHE_MAX_AGE_HOURS}h), fetching fresh data...")
+        return None
         return None
     
     @staticmethod
@@ -252,19 +270,22 @@ class BlockchainFetcher:
 
 class DataFetcher:
     DATA_DIR = "data"
-    
+
     @staticmethod
     def _get_cache_path(days: int) -> str:
         return os.path.join(DataFetcher.DATA_DIR, f"combined_data_{days}d.csv")
-    
+
     @staticmethod
     def _load_from_cache(days: int) -> Optional[pd.DataFrame]:
         cache_path = DataFetcher._get_cache_path(days)
-        if os.path.exists(cache_path):
+        if _cache_is_fresh(cache_path):
             df = pd.read_csv(cache_path)
             df['date'] = pd.to_datetime(df['date'])
             print(f"   [CACHE] Loaded combined data from {cache_path}")
             return df
+        if os.path.exists(cache_path):
+            print(f"   [CACHE] Combined data cache expired (>{_CACHE_MAX_AGE_HOURS}h), fetching fresh data...")
+        return None
         return None
     
     @staticmethod

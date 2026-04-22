@@ -106,7 +106,7 @@ class RiskManager:
         t = Config.RECOVERY_THRESHOLDS[mode_key]
         return dd > t["dd"] and vol < t["vol"] and var_loss_pct < t["var"]
 
-    def evaluate(self, nav: float, daily_return: float | None = None) -> dict:
+    def evaluate(self, nav: float, daily_return=None) -> dict:
         if daily_return is not None:
             self.update_returns(daily_return)
 

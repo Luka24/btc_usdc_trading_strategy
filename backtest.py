@@ -164,7 +164,7 @@ class BacktestEngine:
         self.portfolio_manager.initialize_holdings(first_price, initial_btc_quantity)
 
         prev_nav = None
-        prev_price: float | None = None
+        prev_price = None
         _btc_returns: deque = deque(maxlen=PortfolioConfig.VOL_SCALING_WINDOW)
 
         col_signal:           list = []

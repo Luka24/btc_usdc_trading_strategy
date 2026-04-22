@@ -704,7 +704,7 @@ h2 { color: #3b4637; }
     | Vol scaling lookback | 15 days | **Fixed** | Standard two-week window |
     | Vol scale min | 0.20 | **Fixed** | Keep minimum market participation |
     | Vol scale max | 1.00 | **Fixed** | No leverage |
-    | Rolling peak window | 252 days | **Fixed** | One trading year — hedge fund industry standard |
+    | Rolling peak window | 365 days | **Fixed** | One calendar year — BTC trades 24/7, no weekend closure |
     | VaR lookback | 30 days | **Fixed** | Standard 1-month lookback |
     | VaR confidence z-score | 2.33 | **Fixed** | 99th percentile normal distribution |
     | Recovery days — CAUTION | 2 days | **Fixed** | Minimum stabilisation window |

@@ -427,20 +427,27 @@ try:
     total_return = ((final_value - initial_value) / initial_value) * 100
     
     daily_returns = portfolio_df_filtered['total_value'].pct_change().dropna()
-    sharpe = (daily_returns.mean() / daily_returns.std()) * np.sqrt(252) if len(daily_returns) > 0 and daily_returns.std() > 0 else 0
-    downside = daily_returns[daily_returns < 0]
-    sortino = (daily_returns.mean() / downside.std()) * np.sqrt(252) if len(downside) > 1 and downside.std() > 0 else 0
+    ANN = 365  # BTC trades 24/7 — calendar days, not equity trading days
+    sharpe = (daily_returns.mean() / daily_returns.std()) * np.sqrt(ANN) if len(daily_returns) > 0 and daily_returns.std() > 0 else 0
+    # Sortino: full-sample semi-deviation (matches portfolio.py backend exactly)
+    # All N observations in denominator; positive days contribute 0 to downside_sq.
+    if len(daily_returns) > 0:
+        downside_sq = np.minimum(daily_returns, 0.0) ** 2
+        semi_dev = np.sqrt(downside_sq.mean())
+        sortino = float(daily_returns.mean() / semi_dev * np.sqrt(ANN)) if semi_dev > 0 else 0.0
+    else:
+        sortino = 0.0
 
     cummax = portfolio_df_filtered['total_value'].cummax()
     drawdown = ((portfolio_df_filtered['total_value'] - cummax) / cummax) * 100
     max_dd = drawdown.min()
-    
+
     display_metrics = {
         'total_return': total_return,
         'sharpe_ratio': sharpe,
         'sortino_ratio': sortino,
         'max_drawdown': max_dd,
-        'volatility': daily_returns.std() * np.sqrt(252) * 100 if len(daily_returns) > 0 else 0,
+        'volatility': daily_returns.std() * np.sqrt(ANN) * 100 if len(daily_returns) > 0 else 0,
         'var_99': daily_returns.quantile(0.01) * 100 if len(daily_returns) > 0 else 0,
         'total_trades': (results_df_filtered['signal'] == 'BUY').sum() + (results_df_filtered['signal'] == 'SELL').sum(),
         'win_rate': ((daily_returns > 0).sum() / len(daily_returns) * 100) if len(daily_returns) > 0 else 0,
@@ -501,7 +508,8 @@ with col2:
         delta=None,
         help=(
             "Risk-adjusted return relative to total volatility (up and down moves).\n"
-            "Formula: (mean daily return / std daily return) × √252\n"
+            "Formula: (mean daily return / std daily return) × √365\n"
+            "BTC trades 24/7 so 365 calendar days are used, not the equity convention of 252.\n"
             "Limitation: penalises large upside moves the same as losses. "
             "That is why Sortino is used as the primary optimisation target here."
         )
@@ -514,7 +522,9 @@ with col3:
         delta=None,
         help=(
             "Risk-adjusted return relative to downside volatility only.\n"
-            "Formula: (mean daily return / std of negative daily returns) × √252\n"
+            "Formula: mean daily return / semi-deviation × √365\n"
+            "Semi-deviation: √(mean of min(r, 0)²) over all N days (full-sample, per Sortino & Forsey 1996).\n"
+            "BTC trades 24/7 so 365 calendar days are used, not the equity convention of 252.\n"
             "This is the primary metric the strategy parameters were optimised for."
         )
     )
@@ -528,7 +538,9 @@ with col4:
         help=(
             "Largest peak-to-trough decline over the selected period.\n"
             "Formula: (portfolio value − running peak) / running peak × 100\n"
-            "The risk engine activates: CAUTION at −6%, RISK_OFF at −36%, EMERGENCY at −53%."
+            f"The risk engine activates: CAUTION at {_dd['CAUTION']*100:.0f}%, "
+            f"RISK_OFF at {_dd['RISK_OFF']*100:.0f}%, "
+            f"EMERGENCY at {_dd['EMERGENCY']*100:.0f}%."
         )
     )
 
@@ -539,7 +551,8 @@ with col5:
         delta=None,
         help=(
             "Annualised standard deviation of daily portfolio returns.\n"
-            "Formula: std(daily returns) × √252 × 100\n"
+            "Formula: std(daily returns) × √365 × 100\n"
+            "BTC trades 24/7 so 365 calendar days are used, not the equity convention of 252.\n"
             "The strategy targets ~40% annualised vol via dynamic position scaling. "
             "Raw BTC typically runs at 60–80% annualised vol."
         )
@@ -986,15 +999,15 @@ else:
     st.info("Hashrate data not available in this backtest run.")
 
 # 5. Drawdown Chart
-st.markdown("""
+st.markdown(f"""
 #### Portfolio Drawdown
 Rolling peak-to-trough decline of the portfolio value over time. This is the primary metric
 the risk engine is designed to contain.
 
 The four risk mode thresholds are marked by the drawdown levels they monitor:
-- **CAUTION** activates at −6% → caps BTC exposure at 75%
-- **RISK_OFF** activates at −36% → caps BTC exposure at 45%
-- **EMERGENCY** activates at −53% → caps BTC exposure at 5%
+- **CAUTION** activates at {_dd['CAUTION']*100:.0f}% → caps BTC exposure at {int(_caps['CAUTION']*100)}%
+- **RISK_OFF** activates at {_dd['RISK_OFF']*100:.0f}% → caps BTC exposure at {int(_caps['RISK_OFF']*100)}%
+- **EMERGENCY** activates at {_dd['EMERGENCY']*100:.0f}% → caps BTC exposure at {int(_caps['EMERGENCY']*100)}%
 
 A smaller max drawdown relative to buy-and-hold means a shorter recovery path back to a new
 high-water mark — which directly improves long-run compounded performance.
